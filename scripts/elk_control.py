@@ -122,25 +122,25 @@ async def send_command(mac, command_bytes, retries=2):
     """Send a command to an ELK-BLEDOM device via BLE."""
     from bleak import BleakClient
 
-    print(f"Connecting to {mac}...")
-    async with BleakClient(mac, timeout=10) as client:
-        if not client.is_connected:
-            print(f"  Failed to connect to {mac}")
-            return False
+    for conn_attempt in range(retries + 1):
+        try:
+            print(f"Connecting to {mac}...")
+            async with BleakClient(mac, timeout=20) as client:
+                if not client.is_connected:
+                    print(f"  Failed to connect to {mac}")
+                    return False
 
-        print(f"  Connected. Sending: {command_bytes.hex()}")
-        for attempt in range(retries + 1):
-            try:
+                print(f"  Connected. Sending: {command_bytes.hex()}")
                 await client.write_gatt_char(WRITE_CHAR_UUID, command_bytes, response=False)
                 print(f"  Sent successfully.")
                 return True
-            except Exception as e:
-                if attempt < retries:
-                    print(f"  Write failed, retrying... ({e})")
-                    await asyncio.sleep(0.1)
-                else:
-                    print(f"  Write failed: {e}")
-                    return False
+        except Exception as e:
+            if conn_attempt < retries:
+                print(f"  Connection failed, retrying in 2s... ({e})")
+                await asyncio.sleep(2)
+            else:
+                print(f"  Failed after {retries + 1} attempts: {e}")
+                return False
 
 
 async def send_to_all(command_bytes, target_mac=None, scan_timeout=5):
