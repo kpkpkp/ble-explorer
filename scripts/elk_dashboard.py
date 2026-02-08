@@ -145,6 +145,9 @@ class BLEConnectionManager:
     def __init__(self):
         self._clients: dict[str, "BleakClient"] = {}
         self._lock = asyncio.Lock()
+        self._wanted: set[str] = set()  # MACs user wants connected
+        self._reconnect_task: Optional[asyncio.Task] = None
+        self._on_reconnect = None  # callback for connection state changes
 
     @property
     def connected(self) -> dict[str, bool]:
@@ -153,6 +156,31 @@ class BLEConnectionManager:
             for name, mac in STRIPS.items()
         }
 
+    def _start_reconnect_loop(self):
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+    async def _reconnect_loop(self):
+        """Background loop: retry connecting to wanted-but-disconnected strips."""
+        from bleak import BleakClient
+        while self._wanted:
+            await asyncio.sleep(5)
+            for mac in list(self._wanted):
+                client = self._clients.get(mac)
+                if client and client.is_connected:
+                    continue
+                try:
+                    logger.info(f"Auto-reconnecting {mac}...")
+                    client = BleakClient(mac, timeout=15)
+                    await client.connect()
+                    self._clients[mac] = client
+                    logger.info(f"  {mac} auto-reconnected!")
+                    if self._on_reconnect:
+                        await self._on_reconnect()
+                except Exception as e:
+                    logger.warning(f"  Auto-reconnect {mac} failed: {e}")
+
     async def connect(self, targets: list[str]):
         from bleak import BleakClient
         async with self._lock:
@@ -160,6 +188,7 @@ class BLEConnectionManager:
                 mac = STRIPS.get(name)
                 if not mac:
                     continue
+                self._wanted.add(mac)
                 if mac in self._clients and self._clients[mac].is_connected:
                     continue
                 try:
@@ -171,6 +200,7 @@ class BLEConnectionManager:
                 except Exception as e:
                     logger.error(f"  {name} connection failed: {e}")
                     raise
+        self._start_reconnect_loop()
 
     async def disconnect(self, targets: list[str]):
         async with self._lock:
@@ -178,6 +208,7 @@ class BLEConnectionManager:
                 mac = STRIPS.get(name)
                 if not mac:
                     continue
+                self._wanted.discard(mac)
                 client = self._clients.pop(mac, None)
                 if client:
                     try:
@@ -222,6 +253,8 @@ class BLEConnectionManager:
                 self._clients.pop(mac, None)
 
         await asyncio.gather(*[_write_one(m) for m in macs])
+        if errors and self._wanted:
+            self._start_reconnect_loop()
         return errors
 
     async def disconnect_all(self):
@@ -360,6 +393,7 @@ async def broadcast(msg: dict):
 
 
 pattern_engine = PatternEngine(ble_mgr, broadcast)
+ble_mgr._on_reconnect = lambda: broadcast_connection()
 presets = load_presets()
 
 
