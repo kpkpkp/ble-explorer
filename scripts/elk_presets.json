@@ -1,0 +1,304 @@
+{
+  "American Flag": {
+    "steps": [
+      {
+        "color": "#B31942",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFFFFF",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#0A3161",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "Utah State": {
+    "steps": [
+      {
+        "color": "#071D49",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFFFFF",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#AA0200",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFB81D",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "South Jordan": {
+    "steps": [
+      {
+        "color": "#005E2C",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#1A5276",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFFFFF",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#B87333",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "4th of July": {
+    "steps": [
+      {
+        "color": "#C41F40",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFFFFF",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#1E2D60",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "Pioneer Day": {
+    "steps": [
+      {
+        "color": "#071D49",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFFFFF",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#AA0200",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFB81D",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#8B5E3C",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#F5E6C8",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "Christmas": {
+    "steps": [
+      {
+        "color": "#C30F16",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#165B33",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#F8B229",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFFFFF",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "Halloween": {
+    "steps": [
+      {
+        "color": "#FF9A00",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#F75F1C",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#000000",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#881EE4",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#85E21F",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "Mardi Gras": {
+    "steps": [
+      {
+        "color": "#880085",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFD700",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#00A651",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  },
+  "Pride Rainbow": {
+    "steps": [
+      {
+        "color": "#E40303",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FF8C00",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#FFED00",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#008026",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#004DFF",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      },
+      {
+        "color": "#750787",
+        "brightness": 100,
+        "duration": 2.0,
+        "transition": "cut",
+        "fade_time": 0.5
+      }
+    ]
+  }
+}
