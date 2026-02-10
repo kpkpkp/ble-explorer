@@ -70,14 +70,14 @@ fun ColorPicker(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(6.dp))
 
         // RGB sliders
         SliderRow("R", red, Color(0xFFFF4444)) { onColorChange(it, green, blue) }
         SliderRow("G", green, Color(0xFF44FF44)) { onColorChange(red, it, blue) }
         SliderRow("B", blue, Color(0xFF4444FF)) { onColorChange(red, green, it) }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
 
         // Hex input + preview swatches
         Row(
@@ -116,7 +116,7 @@ fun ColorPicker(
                 Text("Input", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(32.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .background(Color(red, green, blue))
                 )
@@ -127,7 +127,7 @@ fun ColorPicker(
                     Text("Output", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(32.dp)
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(correctedRed, correctedGreen, correctedBlue))
                     )

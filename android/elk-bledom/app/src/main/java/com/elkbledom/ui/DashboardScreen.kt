@@ -62,44 +62,42 @@ fun DashboardScreen(
             .fillMaxSize()
             .background(BgColor)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         // Title
-        Text(
-            "ELK-BLEDOM",
-            style = MaterialTheme.typography.headlineMedium,
-            color = AccentColor
-        )
+        Text("ELK-BLEDOM", style = MaterialTheme.typography.titleLarge, color = AccentColor)
 
-        // --- Connection Bar ---
+        // --- Connection ---
         SectionCard("Connection") {
             Button(
                 onClick = { bleManager.scan() },
                 enabled = !isScanning,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentColor)
+                colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
+                modifier = Modifier.height(36.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
                 if (isScanning) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(14.dp),
                         color = Color.White,
                         strokeWidth = 2.dp
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Scanning...")
+                    Spacer(Modifier.width(6.dp))
+                    Text("Scanning...", style = MaterialTheme.typography.labelMedium)
                 } else {
-                    Icon(Icons.Default.Search, contentDescription = "Scan")
+                    Icon(Icons.Default.Search, "Scan", modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Scan")
+                    Text("Scan", style = MaterialTheme.typography.labelMedium)
                 }
             }
-
-            Spacer(Modifier.height(8.dp))
-
             if (discoveredDevices.isEmpty() && !isScanning) {
-                Text("No devices found. Tap Scan.", color = Color.Gray)
+                Text(
+                    "No devices found. Tap Scan.", color = Color.Gray,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
-
             discoveredDevices.forEach { device ->
                 @Suppress("MissingPermission")
                 val name = device.name ?: "Unknown"
@@ -112,54 +110,48 @@ fun DashboardScreen(
             }
         }
 
-        // --- Target Selector ---
-        SectionCard("Target") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Target.entries.forEach { t ->
-                    FilterChip(
-                        selected = target == t,
-                        onClick = { bleManager.target.value = t },
-                        label = { Text(t.name.replace("_", " ")) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = AccentColor,
-                            selectedLabelColor = Color.White
-                        )
+        // --- Target + Power (compact bar) ---
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(CardColor, RoundedCornerShape(10.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Target.entries.forEach { t ->
+                FilterChip(
+                    selected = target == t,
+                    onClick = { bleManager.target.value = t },
+                    label = { Text(t.name.replace("_", " "), style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.height(28.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = AccentColor,
+                        selectedLabelColor = Color.White
                     )
-                }
+                )
+                Spacer(Modifier.width(4.dp))
             }
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = { bleManager.write(ElkProtocol.cmdPower(true)) },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                modifier = Modifier.height(28.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp)
+            ) { Text("ON", style = MaterialTheme.typography.labelSmall) }
+            Spacer(Modifier.width(4.dp))
+            Button(
+                onClick = { bleManager.write(ElkProtocol.cmdPower(false)) },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF666666)),
+                modifier = Modifier.height(28.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp)
+            ) { Text("OFF", style = MaterialTheme.typography.labelSmall) }
         }
 
-        // --- Power ---
-        SectionCard("Power") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { bleManager.write(ElkProtocol.cmdPower(true)) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                ) {
-                    Icon(Icons.Default.PowerSettingsNew, contentDescription = "On")
-                    Spacer(Modifier.width(4.dp))
-                    Text("ON")
-                }
-                Button(
-                    onClick = { bleManager.write(ElkProtocol.cmdPower(false)) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF666666))
-                ) {
-                    Icon(Icons.Default.PowerSettingsNew, contentDescription = "Off")
-                    Spacer(Modifier.width(4.dp))
-                    Text("OFF")
-                }
-            }
-        }
-
-        // --- Color Picker ---
+        // --- Color + Brightness (merged) ---
         SectionCard("Color") {
             ColorPicker(
-                red = red,
-                green = green,
-                blue = blue,
-                correctedRed = corrR,
-                correctedGreen = corrG,
-                correctedBlue = corrB,
+                red = red, green = green, blue = blue,
+                correctedRed = corrR, correctedGreen = corrG, correctedBlue = corrB,
                 calibrationEnabled = calibrationEnabled,
                 onColorChange = { r, g, b ->
                     red = r; green = g; blue = b
@@ -171,12 +163,9 @@ fun DashboardScreen(
                     bleManager.write(ElkProtocol.cmdColor(cr, cg, cb))
                 }
             )
-        }
-
-        // --- Brightness ---
-        SectionCard("Brightness") {
+            Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.BrightnessLow, contentDescription = null, tint = Color.Gray)
+                Icon(Icons.Default.BrightnessLow, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
                 Slider(
                     value = brightness,
                     onValueChange = { brightness = it },
@@ -187,13 +176,12 @@ fun DashboardScreen(
                     valueRange = 0f..100f,
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(
-                        thumbColor = AccentColor,
-                        activeTrackColor = AccentColor
+                        thumbColor = AccentColor, activeTrackColor = AccentColor
                     )
                 )
-                Icon(Icons.Default.BrightnessHigh, contentDescription = null, tint = Color.White)
-                Spacer(Modifier.width(8.dp))
-                Text("${brightness.toInt()}%", color = Color.White)
+                Icon(Icons.Default.BrightnessHigh, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("${brightness.toInt()}%", color = Color.White, style = MaterialTheme.typography.labelMedium)
             }
         }
 
@@ -234,13 +222,10 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Visual Calibration", color = Color.White)
+                Text("Visual Calibration", color = Color.White, style = MaterialTheme.typography.bodyMedium)
                 Switch(
                     checked = calibrationEnabled,
-                    onCheckedChange = {
-                        calibrationEnabled = it
-                        calibration.enabled = it
-                    },
+                    onCheckedChange = { calibrationEnabled = it; calibration.enabled = it },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = AccentColor,
                         checkedTrackColor = AccentColor.copy(alpha = 0.5f)
@@ -251,13 +236,12 @@ fun DashboardScreen(
                 val (er, eg, eb) = calibration.apply(255, 0, 0)
                 Text(
                     "Example: #FF0000 → #${String.format("%02X%02X%02X", er, eg, eb)}",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall
+                    color = Color.Gray, style = MaterialTheme.typography.bodySmall
                 )
             }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -268,14 +252,14 @@ private fun SectionCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = CardColor),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(10.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 color = AccentColor,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 4.dp)
             )
             content()
         }
@@ -291,49 +275,34 @@ private fun DeviceRow(
     onDisconnect: () -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Status dot
         Box(
-            modifier = Modifier
-                .size(12.dp)
-                .clip(CircleShape)
-                .background(
-                    when (state) {
-                        ConnectionState.CONNECTED -> Color(0xFF4CAF50)
-                        ConnectionState.CONNECTING -> Color(0xFFFFC107)
-                        ConnectionState.DISCONNECTED -> Color.Gray
-                    }
-                )
+            modifier = Modifier.size(10.dp).clip(CircleShape).background(
+                when (state) {
+                    ConnectionState.CONNECTED -> Color(0xFF4CAF50)
+                    ConnectionState.CONNECTING -> Color(0xFFFFC107)
+                    ConnectionState.DISCONNECTED -> Color.Gray
+                }
+            )
         )
         Spacer(Modifier.width(8.dp))
-
         Column(modifier = Modifier.weight(1f)) {
-            Text(name, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            Text(name, color = Color.White, style = MaterialTheme.typography.bodySmall)
             Text(address, color = Color.Gray, style = MaterialTheme.typography.labelSmall)
         }
-
         when (state) {
-            ConnectionState.CONNECTED -> {
+            ConnectionState.CONNECTED ->
                 TextButton(onClick = onDisconnect) {
-                    Text("Disconnect", color = Color.Gray)
+                    Text("Disconnect", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                 }
-            }
-            ConnectionState.CONNECTING -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = AccentColor,
-                    strokeWidth = 2.dp
-                )
-            }
-            ConnectionState.DISCONNECTED -> {
+            ConnectionState.CONNECTING ->
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = AccentColor, strokeWidth = 2.dp)
+            ConnectionState.DISCONNECTED ->
                 TextButton(onClick = onConnect) {
-                    Text("Connect", color = AccentColor)
+                    Text("Connect", color = AccentColor, style = MaterialTheme.typography.labelSmall)
                 }
-            }
         }
     }
 }
@@ -349,56 +318,44 @@ private fun EffectsSection(
     var expanded by remember { mutableStateOf(false) }
     val effectNames = ElkProtocol.EFFECTS.keys.toList()
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
             value = selectedEffect.ifEmpty { "Select effect..." },
             onValueChange = {},
             readOnly = true,
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(),
+            modifier = Modifier.fillMaxWidth().menuAnchor(),
+            textStyle = MaterialTheme.typography.bodySmall,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = AccentColor,
-                unfocusedBorderColor = Color.Gray
-            )
+                focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                focusedBorderColor = AccentColor, unfocusedBorderColor = Color.Gray
+            ),
+            singleLine = true
         )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             effectNames.forEach { name ->
                 DropdownMenuItem(
                     text = { Text(name) },
-                    onClick = {
-                        onEffectSelected(name)
-                        expanded = false
-                    }
+                    onClick = { onEffectSelected(name); expanded = false }
                 )
             }
         }
     }
 
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(4.dp))
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Speed", color = Color.Gray, modifier = Modifier.width(50.dp))
+        Text("Speed", color = Color.Gray, modifier = Modifier.width(42.dp),
+            style = MaterialTheme.typography.labelSmall)
         Slider(
             value = effectSpeed,
             onValueChange = onSpeedChange,
             valueRange = 1f..10f,
             steps = 8,
             modifier = Modifier.weight(1f),
-            colors = SliderDefaults.colors(
-                thumbColor = AccentColor,
-                activeTrackColor = AccentColor
-            )
+            colors = SliderDefaults.colors(thumbColor = AccentColor, activeTrackColor = AccentColor)
         )
-        Text("${effectSpeed.toInt()}", color = Color.White, modifier = Modifier.width(24.dp))
+        Text("${effectSpeed.toInt()}", color = Color.White, modifier = Modifier.width(20.dp),
+            style = MaterialTheme.typography.labelMedium)
     }
 }
