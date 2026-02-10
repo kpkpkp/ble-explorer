@@ -1,0 +1,14 @@
+{
+  "Red":        {"deg": 0,   "standard": [255,0,0],     "strip_input": [20,7,3]},
+  "Orange":     {"deg": 30,  "standard": [255,127,0],   "strip_input": [107,27,9]},
+  "Yellow":     {"deg": 60,  "standard": [255,255,0],   "strip_input": [101,27,11]},
+  "Chartreuse": {"deg": 90,  "standard": [127,255,0],   "strip_input": [40,23,5]},
+  "Green":      {"deg": 120, "standard": [0,255,0],     "strip_input": [13,6,3]},
+  "Spring":     {"deg": 150, "standard": [0,255,127],   "strip_input": [19,10,4]},
+  "Cyan":       {"deg": 180, "standard": [0,255,255],   "strip_input": [20,17,8]},
+  "Azure":      {"deg": 210, "standard": [0,127,255],   "strip_input": [17,9,5]},
+  "Blue":       {"deg": 240, "standard": [0,0,255],     "strip_input": [0,0,25]},
+  "Violet":     {"deg": 270, "standard": [127,0,255],   "strip_input": [35,13,7]},
+  "Magenta":    {"deg": 300, "standard": [255,0,255],   "strip_input": [54,15,7]},
+  "Rose":       {"deg": 330, "standard": [255,0,127],   "strip_input": [63,0,12]}
+}

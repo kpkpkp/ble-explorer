@@ -9,8 +9,10 @@ Then open http://localhost:8080 in a browser.
 """
 
 import asyncio
+import colorsys
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -18,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 import uvicorn
 
 # Import command builders from elk_control.py (same directory)
@@ -306,6 +308,7 @@ class PatternEngine:
         return max(0, min(255, int(pct * 255 / 100)))
 
     async def _send_color_and_brightness(self, targets, r, g, b, brightness_pct):
+        r, g, b = _apply_lut(r, g, b)
         await self._ble.write(targets, cmd_color(r, g, b), reconnect=False)
         await self._ble.write(targets, cmd_brightness(self._brightness_to_byte(brightness_pct)),
                               reconnect=False)
@@ -380,6 +383,9 @@ class PatternEngine:
 app = FastAPI(title="ELK-BLEDOM Dashboard")
 ble_mgr = BLEConnectionManager()
 ws_clients: set[WebSocket] = set()
+calibration_lut: Optional[dict] = None  # legacy per-channel LUT
+calibration_map: Optional[list] = None   # visual calibration: list of {deg, standard, strip_input}
+ref_current_color: list[int] = [0, 0, 0]  # current reference display color (set via /ref/set)
 
 
 async def broadcast(msg: dict):
@@ -406,6 +412,114 @@ async def broadcast_connection():
 async def index():
     html_path = Path(__file__).parent / "elk_dashboard.html"
     return HTMLResponse(html_path.read_text())
+
+
+@app.get("/ref", response_class=HTMLResponse)
+async def ref_color(r: int = 0, g: int = 0, b: int = 0):
+    """Full-screen solid color page for calibration reference display (static)."""
+    return HTMLResponse(
+        f"<html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<meta name='theme-color' content='rgb({r},{g},{b})'>"
+        f"</head><body style='margin:0;padding:0;background:rgb({r},{g},{b});"
+        f"width:100vw;height:300vh;overflow:hidden'></body></html>"
+    )
+
+
+@app.get("/ref/live", response_class=HTMLResponse)
+async def ref_live():
+    """Self-updating full-screen color page. Polls /ref/color every 500ms."""
+    return HTMLResponse(
+        "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='theme-color' content='#000000'>"
+        "</head><body style='margin:0;padding:0;background:#000;"
+        "width:100vw;height:300vh;overflow:hidden'>"
+        "<script>"
+        "async function poll(){"
+        "try{const r=await fetch('/ref/color');const c=await r.json();"
+        "const s=`rgb(${c.r},${c.g},${c.b})`;"
+        "document.body.style.background=s;"
+        "document.querySelector('meta[name=theme-color]').content=s;"
+        "}catch(e){}"
+        "setTimeout(poll,500);}"
+        "poll();"
+        "</script></body></html>"
+    )
+
+
+@app.get("/ref/color")
+async def ref_get_color():
+    """Return the current reference display color."""
+    global ref_current_color
+    return {"r": ref_current_color[0], "g": ref_current_color[1], "b": ref_current_color[2]}
+
+
+@app.post("/ref/set")
+async def ref_set_color(body: dict):
+    """Set the reference display color (the /ref/live page will pick it up)."""
+    global ref_current_color
+    ref_current_color = [body.get("r", 0), body.get("g", 0), body.get("b", 0)]
+    return {"ok": True, "color": ref_current_color}
+
+
+# --- Calibration viewer ---
+@app.get("/calibration", response_class=HTMLResponse)
+async def calibration_viewer():
+    html_path = Path(__file__).parent / "elk_calibration_viewer.html"
+    return HTMLResponse(html_path.read_text())
+
+
+@app.get("/calibration/data")
+async def calibration_data():
+    """Return calibration measurements, photos list, and LUT for the viewer."""
+    captures = Path(__file__).parent.parent / "captures"
+    # Find latest calibration dir
+    cal_dirs = sorted(captures.glob("calibration_*"), reverse=True) if captures.exists() else []
+    if not cal_dirs:
+        return JSONResponse({"measurements": [], "photos": [], "total_colors": 0},
+                            headers={"Cache-Control": "no-store"})
+    cal_dir = cal_dirs[0]
+
+    # Load calibration.json (partial or complete)
+    cal_path = cal_dir / "calibration.json"
+    cal = {}
+    if cal_path.exists():
+        cal = json.loads(cal_path.read_text())
+
+    # List all JPG photos in the directory
+    photos = sorted(
+        [f.name for f in cal_dir.glob("*.jpg")] + [f.name for f in cal_dir.glob("*.MP.jpg")],
+    )
+
+    # Load verification if present
+    ver_path = cal_dir / "verification.json"
+    verification = None
+    if ver_path.exists():
+        verification = json.loads(ver_path.read_text())
+
+    return JSONResponse({
+        "measurements": cal.get("measurements", []),
+        "correction_lut": cal.get("correction_lut"),
+        "total_colors": cal.get("total_colors", 23),
+        "brightness": cal.get("brightness"),
+        "timestamp": cal.get("timestamp"),
+        "complete": "correction_lut" in cal,
+        "verification": verification,
+        "photos": photos,
+        "dir": cal_dir.name,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/calibration/photo/{filename}")
+async def calibration_photo(filename: str):
+    """Serve a captured photo from the latest calibration directory."""
+    captures = Path(__file__).parent.parent / "captures"
+    cal_dirs = sorted(captures.glob("calibration_*"), reverse=True) if captures.exists() else []
+    if not cal_dirs:
+        return JSONResponse({"error": "no calibration directory"}, 404)
+    photo_path = cal_dirs[0] / filename
+    if not photo_path.exists():
+        return JSONResponse({"error": "photo not found"}, 404)
+    return FileResponse(str(photo_path), media_type="image/jpeg")
 
 
 # --- Status ---
@@ -494,10 +608,174 @@ async def _ble_result(errors: list[str]):
     return {"ok": True}
 
 
+def _apply_lut(r, g, b):
+    """Apply color correction using visual calibration map (HSV interpolation).
+
+    Falls back to legacy per-channel LUT if no visual calibration loaded.
+    """
+    if calibration_map:
+        return _apply_visual_calibration(r, g, b)
+    if calibration_lut:
+        r = calibration_lut["r"][r]
+        g = calibration_lut["g"][g]
+        b = calibration_lut["b"][b]
+    return r, g, b
+
+
+# White calibration point (from visual tuning)
+_WHITE_STRIP = (75, 40, 15)
+
+
+def _apply_visual_calibration(r, g, b):
+    """Map standard RGB to corrected strip RGB using 12-hue calibration data.
+
+    Approach:
+    1. Convert input to HSV
+    2. Find two nearest calibration hues, interpolate per-channel scale factors
+    3. Scale by saturation (low sat → blend toward white correction)
+    4. Scale by value (brightness)
+    """
+    if r == 0 and g == 0 and b == 0:
+        return (0, 0, 0)
+
+    h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+    hue_deg = h * 360.0
+
+    # Find the two bracketing calibration points by hue
+    pts = calibration_map  # sorted by deg
+    lo = pts[-1]  # wrap: last point (330°) is "below" 0°
+    hi = pts[0]   # wrap: first point (0°) is "above" 330°
+    for i in range(len(pts)):
+        if pts[i]["deg"] <= hue_deg:
+            lo = pts[i]
+            hi = pts[(i + 1) % len(pts)]
+        else:
+            break
+
+    # Interpolation factor between lo and hi
+    lo_deg = lo["deg"]
+    hi_deg = hi["deg"]
+    if hi_deg <= lo_deg:
+        hi_deg += 360  # wrap
+    span = hi_deg - lo_deg
+    if span == 0:
+        t = 0.0
+    else:
+        d = hue_deg - lo_deg
+        if d < 0:
+            d += 360
+        t = d / span
+    t = max(0.0, min(1.0, t))
+
+    # Compute per-channel scale factors from each calibration point
+    def scales(pt):
+        std = pt["standard"]
+        strip = pt["strip_input"]
+        sc = []
+        for i in range(3):
+            if std[i] > 0:
+                sc.append(strip[i] / std[i])
+            else:
+                sc.append(strip[i] / 255.0 if strip[i] > 0 else 0.0)
+        return sc
+
+    lo_sc = scales(lo)
+    hi_sc = scales(hi)
+
+    # Lerp scale factors
+    sc = [lo_sc[i] * (1 - t) + hi_sc[i] * t for i in range(3)]
+
+    # Apply hue-based correction at full saturation
+    hue_r = r * sc[0]
+    hue_g = g * sc[1]
+    hue_b = b * sc[2]
+
+    # White correction for desaturated colors
+    white_r = r * _WHITE_STRIP[0] / 255.0
+    white_g = g * _WHITE_STRIP[1] / 255.0
+    white_b = b * _WHITE_STRIP[2] / 255.0
+
+    # Blend between hue correction and white correction based on saturation
+    out_r = hue_r * s + white_r * (1 - s)
+    out_g = hue_g * s + white_g * (1 - s)
+    out_b = hue_b * s + white_b * (1 - s)
+
+    return (
+        max(0, min(255, int(round(out_r)))),
+        max(0, min(255, int(round(out_g)))),
+        max(0, min(255, int(round(out_b)))),
+    )
+
+
+@app.post("/api/calibration")
+async def api_calibration(body: dict):
+    """Hot-reload calibration data without restarting dashboard.
+
+    Accepts:
+      - {"path": "visual_calibration.json"} — load visual calibration map
+      - {"correction_lut": {...}} — legacy per-channel LUT
+      - {"action": "clear"} — disable all correction
+    """
+    global calibration_lut, calibration_map
+    if "path" in body:
+        import json as _json
+        try:
+            with open(body["path"]) as f:
+                cal = _json.load(f)
+            # Detect format: visual calibration has color names as keys with "deg"
+            if isinstance(cal, dict) and any("deg" in v for v in cal.values() if isinstance(v, dict)):
+                # Visual calibration map
+                calibration_map = sorted(
+                    [{"deg": v["deg"], "standard": v["standard"], "strip_input": v["strip_input"]}
+                     for v in cal.values() if isinstance(v, dict) and "deg" in v],
+                    key=lambda p: p["deg"]
+                )
+                calibration_lut = None
+                return {"ok": True, "status": "visual_calibration_loaded",
+                        "points": len(calibration_map), "path": body["path"]}
+            # Legacy: correction_lut inside a calibration.json
+            calibration_lut = cal.get("correction_lut")
+            calibration_map = None
+            if calibration_lut:
+                return {"ok": True, "status": "legacy_lut_loaded", "path": body["path"]}
+            return {"ok": False, "error": "Unrecognized calibration format"}
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)}, 400)
+    elif "correction_lut" in body:
+        calibration_lut = body["correction_lut"]
+        calibration_map = None
+        return {"ok": True, "status": "legacy_lut_loaded"}
+    elif body.get("action") == "clear":
+        calibration_lut = None
+        calibration_map = None
+        return {"ok": True, "status": "cleared"}
+    return JSONResponse({"ok": False, "error": "Provide path, correction_lut, or action=clear"}, 400)
+
+
+@app.get("/api/calibration")
+async def api_calibration_status():
+    """Check calibration status and preview corrections for test colors."""
+    if calibration_map:
+        # Show what a few standard colors map to
+        samples = {}
+        for name, rgb in [("red", (255,0,0)), ("green", (0,255,0)), ("blue", (0,0,255)),
+                          ("white", (255,255,255)), ("cyan", (0,255,255)), ("orange", (255,128,0))]:
+            corrected = _apply_visual_calibration(*rgb)
+            samples[name] = {"input": list(rgb), "corrected": list(corrected)}
+        return {"active": True, "type": "visual", "points": len(calibration_map),
+                "samples": samples}
+    if calibration_lut:
+        return {"active": True, "type": "legacy_lut",
+                "r_255": calibration_lut["r"][255],
+                "g_255": calibration_lut["g"][255],
+                "b_255": calibration_lut["b"][255]}
+    return {"active": False}
+
+
 @app.post("/api/color")
 async def api_color(body: dict):
     targets = resolve_targets(body)
-    r, g, b = body["r"], body["g"], body["b"]
+    r, g, b = _apply_lut(body["r"], body["g"], body["b"])
     await pattern_engine.stop()
     errs = await ble_mgr.write(targets, cmd_color(r, g, b))
     return await _ble_result(errs)
@@ -584,8 +862,27 @@ if __name__ == "__main__":
     import argparse as _ap
     _p = _ap.ArgumentParser()
     _p.add_argument("--port", type=int, default=8080)
+    _p.add_argument("--calibration", type=str, default=None,
+                     help="Path to calibration.json with correction LUT")
     _args = _p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    if _args.calibration:
+        with open(_args.calibration) as f:
+            _cal = json.load(f)
+        # Auto-detect format
+        if isinstance(_cal, dict) and any("deg" in v for v in _cal.values() if isinstance(v, dict)):
+            calibration_map = sorted(
+                [{"deg": v["deg"], "standard": v["standard"], "strip_input": v["strip_input"]}
+                 for v in _cal.values() if isinstance(v, dict) and "deg" in v],
+                key=lambda p: p["deg"]
+            )
+            print(f"Loaded visual calibration ({len(calibration_map)} hues) from {_args.calibration}")
+        else:
+            calibration_lut = _cal.get("correction_lut")
+            if calibration_lut:
+                print(f"Loaded legacy calibration LUT from {_args.calibration}")
+            else:
+                print(f"WARNING: No calibration data found in {_args.calibration}")
     print(f"ELK-BLEDOM Dashboard starting on http://0.0.0.0:{_args.port}")
     print("Open in browser to control LED strips.")
     uvicorn.run(app, host="0.0.0.0", port=_args.port, log_level="info")
