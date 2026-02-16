@@ -32,12 +32,13 @@ private val AccentColor = Color(0xFFe94560)
 fun PatternEditor(
     presetManager: PresetManager,
     playbackState: PlaybackState,
-    onPlay: (List<PatternStep>, Boolean) -> Unit,
+    initialPreset: String = "St. Patrick's Day",
+    onPlay: (List<PatternStep>, Boolean, String) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val allPresets by presetManager.allPresets.collectAsState()
-    var selectedPreset by remember { mutableStateOf("Christmas") }
+    var selectedPreset by remember { mutableStateOf(initialPreset) }
     var loop by remember { mutableStateOf(true) }
     var presetExpanded by remember { mutableStateOf(false) }
     val isPlaying = playbackState.state == "playing"
@@ -211,7 +212,7 @@ fun PatternEditor(
                 }
             } else {
                 Button(
-                    onClick = { if (steps.isNotEmpty()) onPlay(steps.toList(), loop) },
+                    onClick = { if (steps.isNotEmpty()) onPlay(steps.toList(), loop, selectedPreset) },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                     modifier = Modifier.height(34.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp)

@@ -292,6 +292,65 @@ class BleManager(context: Context) {
         gattMap.keys.toList().forEach { disconnect(it) }
     }
 
+    /** Returns the MAC addresses of all currently connected devices. */
+    fun getConnectedAddresses(): List<String> =
+        _connectionStates.value
+            .filter { it.value == ConnectionState.CONNECTED }
+            .keys.toList()
+
+    /**
+     * Connect to a device by its MAC address without scanning. Uses
+     * [BluetoothAdapter.getRemoteDevice] to obtain a [BluetoothDevice]
+     * and delegates to [connect].
+     */
+    fun connectByAddress(address: String) {
+        val adapter = bluetoothAdapter ?: run {
+            Log.w(TAG, "BluetoothAdapter not available for connectByAddress")
+            return
+        }
+        try {
+            val device = adapter.getRemoteDevice(address)
+            connect(device)
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "Invalid address for connectByAddress: $address", e)
+        }
+    }
+
+    /**
+     * Attempt to reconnect to a list of previously-connected addresses with
+     * retry + exponential backoff. Emits state updates so the UI shows
+     * progress. Returns when all addresses are connected or retries are
+     * exhausted.
+     */
+    suspend fun autoReconnect(addresses: List<String>, maxRetries: Int = 3) {
+        if (addresses.isEmpty()) return
+        val pending = addresses.toMutableSet()
+
+        for (attempt in 0 until maxRetries) {
+            if (pending.isEmpty()) break
+            val backoffMs = 2000L * (1L shl attempt) // 2s, 4s, 8s
+            if (attempt > 0) {
+                Log.d(TAG, "Auto-reconnect retry $attempt, backoff ${backoffMs}ms")
+                delay(backoffMs)
+            }
+
+            for (address in pending.toList()) {
+                connectByAddress(address)
+            }
+
+            // Wait for connections to settle
+            delay(GATT_TIMEOUT_MS + 1000)
+
+            // Remove addresses that are now connected
+            val connected = getConnectedAddresses().toSet()
+            pending.removeAll(connected)
+        }
+
+        if (pending.isNotEmpty()) {
+            Log.w(TAG, "Auto-reconnect: failed to connect to $pending")
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Writing commands
     // -----------------------------------------------------------------------

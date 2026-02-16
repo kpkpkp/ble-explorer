@@ -1,9 +1,11 @@
 package com.elkbledom
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,6 +18,12 @@ import com.elkbledom.calibration.ColorCalibration
 import com.elkbledom.pattern.PatternEngine
 import com.elkbledom.pattern.PresetManager
 import com.elkbledom.ui.DashboardScreen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+private const val TAG = "MainActivity"
 
 class MainActivity : ComponentActivity() {
 
@@ -23,10 +31,18 @@ class MainActivity : ComponentActivity() {
     private lateinit var calibration: ColorCalibration
     private lateinit var patternEngine: PatternEngine
     private lateinit var presetManager: PresetManager
+    private lateinit var sessionState: SessionState
+
+    private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* permissions granted or denied — BLE ops check at runtime */ }
+    ) { grants ->
+        // Once permissions are resolved, attempt auto-reconnect
+        if (grants.values.all { it }) {
+            launchAutoReconnect()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,8 +51,15 @@ class MainActivity : ComponentActivity() {
         calibration = ColorCalibration(this)
         patternEngine = PatternEngine(bleManager, calibration)
         presetManager = PresetManager(this)
+        sessionState = SessionState(this)
 
-        requestBlePermissions()
+        startLedService()
+
+        if (hasRequiredPermissions()) {
+            launchAutoReconnect()
+        } else {
+            requestBlePermissions()
+        }
 
         setContent {
             MaterialTheme(
@@ -53,21 +76,82 @@ class MainActivity : ComponentActivity() {
                     bleManager = bleManager,
                     calibration = calibration,
                     patternEngine = patternEngine,
-                    presetManager = presetManager
+                    presetManager = presetManager,
+                    sessionState = sessionState,
+                    onStopService = { stopLedService() }
                 )
             }
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    override fun onPause() {
+        super.onPause()
+        saveSession()
+    }
+
+    private fun saveSession() {
+        val addresses = bleManager.getConnectedAddresses()
+        val playback = patternEngine.playbackState.value
+        sessionState.save(
+            addresses = addresses,
+            preset = sessionState.lastPreset,
+            loop = sessionState.lastLoop,
+            playing = playback.state == "playing"
+        )
+        Log.d(TAG, "Session saved: ${addresses.size} devices, playing=${playback.state == "playing"}")
+    }
+
+    private fun launchAutoReconnect() {
+        val savedAddresses = sessionState.connectedAddresses
+        if (savedAddresses.isEmpty()) return
+
+        Log.d(TAG, "Auto-reconnecting to ${savedAddresses.size} device(s)")
+        activityScope.launch {
+            bleManager.autoReconnect(savedAddresses)
+
+            // If playback was active, resume it
+            if (sessionState.wasPlaying) {
+                val presetName = sessionState.lastPreset
+                val loop = sessionState.lastLoop
+                val presets = presetManager.allPresets.value
+                val steps = presets[presetName]
+                if (!steps.isNullOrEmpty()) {
+                    Log.d(TAG, "Resuming playback: $presetName (loop=$loop)")
+                    patternEngine.play(steps, loop)
+                }
+            }
+        }
+    }
+
+    private fun startLedService() {
+        val intent = Intent(this, LedService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun stopLedService() {
         bleManager.disconnectAll()
+        stopService(Intent(this, LedService::class.java))
+    }
+
+    private fun hasRequiredPermissions(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) ==
+                PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        }
     }
 
     private fun requestBlePermissions() {
         val needed = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Android 12+
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
                 != PackageManager.PERMISSION_GRANTED) {
                 needed.add(Manifest.permission.BLUETOOTH_SCAN)
@@ -77,7 +161,6 @@ class MainActivity : ComponentActivity() {
                 needed.add(Manifest.permission.BLUETOOTH_CONNECT)
             }
         } else {
-            // Android 11 and below — need location for BLE scanning
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
                 needed.add(Manifest.permission.ACCESS_FINE_LOCATION)

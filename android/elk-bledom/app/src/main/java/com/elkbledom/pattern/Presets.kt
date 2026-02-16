@@ -1,6 +1,16 @@
 package com.elkbledom.pattern
 
 val BUILTIN_PRESETS = linkedMapOf(
+    "St. Patrick's Day" to listOf(
+        PatternStep("#165B33", 100, 2.0f, "cut", 0.5f),
+        PatternStep("#F8B229", 100, 2.0f, "cut", 0.5f),
+        PatternStep("#FFFFFF", 100, 2.0f, "cut", 0.5f),
+    ),
+    "Valentine's Day" to listOf(
+        PatternStep("#B31942", 100, 2.0f, "cut", 0.5f),
+        PatternStep("#FF69B4", 100, 2.0f, "cut", 0.5f),
+        PatternStep("#FFFFFF", 100, 2.0f, "cut", 0.5f),
+    ),
     "American Flag" to listOf(
         PatternStep("#B31942", 100, 2.0f, "cut", 0.5f),
         PatternStep("#FFFFFF", 100, 2.0f, "cut", 0.5f),

@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.elkbledom.SessionState
 import com.elkbledom.ble.BleManager
 import com.elkbledom.ble.ConnectionState
 import com.elkbledom.ble.Target
@@ -35,7 +36,9 @@ fun DashboardScreen(
     bleManager: BleManager,
     calibration: ColorCalibration,
     patternEngine: PatternEngine,
-    presetManager: PresetManager
+    presetManager: PresetManager,
+    sessionState: SessionState,
+    onStopService: () -> Unit = {}
 ) {
     val connectionStates by bleManager.connectionStates.collectAsState()
     val discoveredDevices by bleManager.discoveredDevices.collectAsState()
@@ -70,25 +73,39 @@ fun DashboardScreen(
 
         // --- Connection ---
         SectionCard("Connection") {
-            Button(
-                onClick = { bleManager.scan() },
-                enabled = !isScanning,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
-                modifier = Modifier.height(36.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp)
-            ) {
-                if (isScanning) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Scanning...", style = MaterialTheme.typography.labelMedium)
-                } else {
-                    Icon(Icons.Default.Search, "Scan", modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Scan", style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { bleManager.scan() },
+                    enabled = !isScanning,
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
+                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp)
+                ) {
+                    if (isScanning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Scanning...", style = MaterialTheme.typography.labelMedium)
+                    } else {
+                        Icon(Icons.Default.Search, "Scan", modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Scan", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                if (connectionStates.values.any { it == ConnectionState.CONNECTED }) {
+                    Button(
+                        onClick = onStopService,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF666666)),
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)
+                    ) {
+                        Icon(Icons.Default.Close, "Stop", modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Stop All", style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
             if (discoveredDevices.isEmpty() && !isScanning) {
@@ -105,7 +122,10 @@ fun DashboardScreen(
                 val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
                 DeviceRow(name, address, state,
                     onConnect = { bleManager.connect(device) },
-                    onDisconnect = { bleManager.disconnect(address) }
+                    onDisconnect = {
+                        bleManager.disconnect(address)
+                        sessionState.connectedAddresses = bleManager.getConnectedAddresses()
+                    }
                 )
             }
         }
@@ -210,8 +230,18 @@ fun DashboardScreen(
             PatternEditor(
                 presetManager = presetManager,
                 playbackState = playbackState,
-                onPlay = { steps, loop -> patternEngine.play(steps, loop) },
-                onStop = { patternEngine.stop() }
+                initialPreset = sessionState.lastPreset,
+                onPlay = { steps, loop, presetName ->
+                    patternEngine.play(steps, loop)
+                    sessionState.lastPreset = presetName
+                    sessionState.lastLoop = loop
+                    sessionState.wasPlaying = true
+                    sessionState.connectedAddresses = bleManager.getConnectedAddresses()
+                },
+                onStop = {
+                    patternEngine.stop()
+                    sessionState.wasPlaying = false
+                }
             )
         }
 
