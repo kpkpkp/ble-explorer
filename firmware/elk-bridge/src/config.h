@@ -4,16 +4,16 @@
 #define STATUS_LED_PIN          8
 
 // --- BLE settings ---
-#define BLE_MAX_STRIPS          6
-#define BLE_RECONNECT_INTERVAL_MS  5000
-#define BLE_CONNECT_TIMEOUT_MS  15000
-#define BLE_MAX_RECONNECT_RETRIES  3
+#define BLE_MAX_STRIPS          3
+#define BLE_RECONNECT_INTERVAL_MS  10000
+#define BLE_CONNECT_TIMEOUT_MS  10000
+#define BLE_MAX_RECONNECT_RETRIES  10
 #define BLE_SCAN_DURATION_S     5
 
 // --- WiFi settings ---
-#define WIFI_TIMEOUT_MS         10000
-#define WIFI_CHECK_INTERVAL_MS  5000
-#define WIFI_MAX_RECONNECT_FAILURES 3
+#define WIFI_TIMEOUT_MS         15000
+#define WIFI_CHECK_INTERVAL_MS  10000
+#define WIFI_MAX_RECONNECT_FAILURES 5
 
 // --- Command reliability ---
 #define COMMAND_RETRY_COUNT     2
@@ -25,7 +25,7 @@
 
 // --- Device identification ---
 #define DEVICE_NAME_PREFIX      "ELK-BLEDOM"
-#define FIRMWARE_VERSION        "1.0.0"
+#define FIRMWARE_VERSION        "1.1.0"
 #define NVS_NAMESPACE           "elk-bridge"
 #define BRIDGE_BLE_NAME         "ELK-Bridge"
 #define BRIDGE_MDNS_NAME        "elk-bridge"

@@ -1,7 +1,7 @@
 /*
  * ELK Bridge — WiFi-to-BLE bridge for ELK-BLEDOM LED strips
  *
- * Target: ESP32-S3 SuperMini (Lolin S3 Mini)
+ * Target: ESP32-C3 SuperMini (Lolin C3 Mini)
  * Framework: Arduino + NimBLE + ESPAsyncWebServer
  *
  * Connects to WiFi, discovers and connects to ELK-BLEDOM BLE LED strips,
@@ -27,6 +27,7 @@ Preferences       prefs;
 HttpServer        httpServer(wifiManager, bleManager, dispatcher, patternEngine, prefs);
 StatusLed         statusLed;
 String            bootStrip2;  // deferred strip2 connect address
+uint32_t          lastHeapLog = 0;
 
 void setup() {
     Serial.begin(115200);
@@ -107,6 +108,15 @@ void loop() {
             bleManager.requestConnect(bootStrip2.c_str());
             bootStrip2 = "";
         }
+    }
+
+    // Periodic heap monitor (every 30s)
+    uint32_t now = millis();
+    if (now - lastHeapLog >= 30000) {
+        lastHeapLog = now;
+        Serial.printf("[Heap] free=%d min=%d strips=%d uptime=%lus\n",
+                      ESP.getFreeHeap(), ESP.getMinFreeHeap(),
+                      (int)bleManager.getStripCount(), now / 1000);
     }
 
     // Update LED based on current state

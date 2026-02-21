@@ -27,13 +27,17 @@ void WiFiManager::startSTA() {
 
     if (WiFi.status() == WL_CONNECTED) {
         _state = CONNECTED;
+        _everConnected = true;
         _reconnectFailures = 0;
         Serial.printf("[WiFi] Connected! IP: %s RSSI: %d dBm\n",
                       WiFi.localIP().toString().c_str(), WiFi.RSSI());
         startMDNS();
     } else {
-        Serial.println("[WiFi] STA connection failed, falling back to AP mode");
-        startAP();
+        // Start AP+STA mode: AP for local access, keep trying STA in loop()
+        Serial.println("[WiFi] STA connection failed, starting AP+STA mode");
+        _state = CONNECTING;
+        _reconnectFailures = 0;
+        startAPSTA();
     }
 }
 
@@ -46,6 +50,18 @@ void WiFiManager::startAP() {
 
     Serial.printf("[WiFi] AP mode: '%s' at %s\n",
                   _apName.c_str(), WiFi.softAPIP().toString().c_str());
+    startMDNS();
+}
+
+void WiFiManager::startAPSTA() {
+    _apName = buildAPName();
+
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(_apName.c_str());
+    WiFi.begin(_ssid, _pass);
+
+    Serial.printf("[WiFi] AP+STA mode: AP '%s' at %s, trying STA '%s'...\n",
+                  _apName.c_str(), WiFi.softAPIP().toString().c_str(), _ssid);
     startMDNS();
 }
 
@@ -105,37 +121,41 @@ void WiFiManager::loop() {
 
     if (_state == CONNECTED) {
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("[WiFi] Connection lost, attempting reconnect...");
+            Serial.printf("[WiFi] Connection lost (was connected for %lus)\n",
+                          (millis() - _lastCheck) / 1000);
             _state = CONNECTING;
             _reconnectFailures = 0;
+            WiFi.disconnect();
+            WiFi.begin(_ssid, _pass);
         }
     } else if (_state == CONNECTING) {
         if (WiFi.status() == WL_CONNECTED) {
             _state = CONNECTED;
+            _everConnected = true;
             _reconnectFailures = 0;
-            Serial.printf("[WiFi] Reconnected! IP: %s\n",
-                          WiFi.localIP().toString().c_str());
+            // Switch from AP+STA to STA-only to free resources
+            if (WiFi.getMode() == WIFI_AP_STA) {
+                WiFi.softAPdisconnect(true);
+                WiFi.mode(WIFI_STA);
+                Serial.println("[WiFi] Switched from AP+STA to STA mode");
+            }
+            Serial.printf("[WiFi] Connected! IP: %s RSSI: %d dBm\n",
+                          WiFi.localIP().toString().c_str(), WiFi.RSSI());
+            startMDNS();
         } else {
             _reconnectFailures++;
-            Serial.printf("[WiFi] Reconnect attempt %d/%d...\n",
-                          _reconnectFailures, WIFI_MAX_RECONNECT_FAILURES);
-
-            if (_reconnectFailures >= WIFI_MAX_RECONNECT_FAILURES) {
-                Serial.println("[WiFi] Max reconnect failures, switching to AP mode");
-                startAP();
-            } else {
-                WiFi.disconnect();
-                WiFi.begin(_ssid, _pass);
-            }
+            Serial.printf("[WiFi] Reconnect attempt %d...\n", _reconnectFailures);
+            WiFi.disconnect(false);
+            WiFi.begin(_ssid, _pass);
         }
     }
-    // In AP_MODE: stay in AP, user must configure via /api/config
+    // In AP_MODE: no SSID configured, user must set via /api/config
 }
 
 String WiFiManager::getIP() const {
     if (_state == CONNECTED) {
         return WiFi.localIP().toString();
-    } else if (_state == AP_MODE) {
+    } else if (_state == AP_MODE || _state == CONNECTING) {
         return WiFi.softAPIP().toString();
     }
     return "0.0.0.0";

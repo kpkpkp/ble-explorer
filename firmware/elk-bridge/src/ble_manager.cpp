@@ -35,20 +35,14 @@ bool BleManager::connect(const char* address, uint8_t addrType) {
     _strips.push_back(strip);
     BleStrip& ref = _strips.back();
 
-    // Retry connection up to 3 times (weak BLE signal may need multiple attempts)
-    for (int attempt = 1; attempt <= 3; attempt++) {
-        Serial.printf("[BLE] Connect attempt %d/3 to %s\n", attempt, address);
-        if (connectStrip(ref)) {
-            Serial.printf("[BLE] Connected to %s as strip%d\n", address, (int)_strips.size());
-            return true;
-        }
-        if (attempt < 3) {
-            Serial.printf("[BLE] Retrying in 1s...\n");
-            delay(1000);
-        }
+    Serial.printf("[BLE] Connecting to %s (addrType=%d)...\n", address, addrType);
+    if (connectStrip(ref)) {
+        Serial.printf("[BLE] Connected to %s as strip%d, heap=%d\n",
+                      address, (int)_strips.size(), ESP.getFreeHeap());
+        return true;
     }
 
-    Serial.printf("[BLE] Failed to connect to %s after 3 attempts\n", address);
+    Serial.printf("[BLE] Failed to connect to %s\n", address);
     _strips.pop_back();
     return false;
 }
@@ -65,22 +59,12 @@ bool BleManager::connectStrip(BleStrip& strip) {
 
     strip.client->setConnectTimeout(BLE_CONNECT_TIMEOUT_MS / 1000);
 
-    // Try with the address type from scan first, then try the other type
-    uint8_t types[] = { strip.addrType, (uint8_t)(strip.addrType == 0 ? 1 : 0) };
-    bool connected = false;
-    for (int t = 0; t < 2 && !connected; t++) {
-        NimBLEAddress addr(strip.address, types[t]);
-        Serial.printf("[BLE] Connecting to %s (addrType=%d)...\n", addr.toString().c_str(), types[t]);
-        if (strip.client->connect(addr)) {
-            connected = true;
-            strip.addrType = types[t];
-        } else {
-            Serial.printf("[BLE] Connection with addrType=%d failed\n", types[t]);
-        }
-    }
+    NimBLEAddress addr(strip.address, strip.addrType);
+    bool connected = strip.client->connect(addr);
 
     if (!connected) {
-        Serial.printf("[BLE] Connection to %s failed (both address types)\n", strip.address.c_str());
+        Serial.printf("[BLE] Connection to %s failed (addrType=%d)\n",
+                      strip.address.c_str(), strip.addrType);
         NimBLEDevice::deleteClient(strip.client);
         strip.client = nullptr;
         strip.state = BleStrip::DISCONNECTED;
@@ -113,6 +97,12 @@ bool BleManager::connectStrip(BleStrip& strip) {
     strip.state = BleStrip::READY;
     strip.retries = 0;
     strip.lastSeen = millis();
+
+    // Relax BLE connection interval to free radio time for WiFi (shared radio on ESP32-C3)
+    // Params: minInterval, maxInterval (units of 1.25ms), latency, timeout (units of 10ms)
+    // 48=60ms, 96=120ms → BLE only uses radio every 60-120ms instead of default 7.5-15ms
+    strip.client->updateConnParams(48, 96, 0, 400);
+
     Serial.printf("[BLE] Strip %s ready (service+char discovered)\n", strip.address.c_str());
     return true;
 }
@@ -257,46 +247,49 @@ void BleManager::loop() {
         _connectOp = ASYNC_DONE;
     }
 
-    // --- Reconnect logic ---
+    // --- Reconnect logic (non-blocking, uses async queue) ---
+    // Skip reconnect checks while an async operation is in progress
+    if (_connectOp != ASYNC_IDLE && _connectOp != ASYNC_DONE) return;
+    if (_scanOp != ASYNC_IDLE && _scanOp != ASYNC_DONE) return;
+
     uint32_t now = millis();
     if (now - _lastReconnectCheck < BLE_RECONNECT_INTERVAL_MS) return;
     _lastReconnectCheck = now;
 
+    // Check connection health
     for (auto& strip : _strips) {
         if (strip.state == BleStrip::READY) {
-            // Check if the connection is still alive
             if (strip.client && !strip.client->isConnected()) {
                 Serial.printf("[BLE] Strip %s lost connection\n", strip.address.c_str());
                 strip.state = BleStrip::LOST;
                 strip.retries = 0;
+                disconnectStrip(strip);
+                strip.state = BleStrip::LOST; // restore after disconnectStrip sets DISCONNECTED
             }
         }
+    }
 
-        if (strip.state == BleStrip::LOST) {
-            if (strip.retries >= BLE_MAX_RECONNECT_RETRIES) {
-                Serial.printf("[BLE] Strip %s max retries reached, giving up\n",
-                              strip.address.c_str());
-                strip.state = BleStrip::DISCONNECTED;
-                if (strip.client) {
-                    NimBLEDevice::deleteClient(strip.client);
-                    strip.client = nullptr;
-                }
-                strip.writeChar = nullptr;
+    // Attempt reconnect for ONE lost strip per iteration (via async queue)
+    for (auto it = _strips.begin(); it != _strips.end(); ) {
+        if (it->state == BleStrip::LOST) {
+            if (it->retries >= BLE_MAX_RECONNECT_RETRIES) {
+                Serial.printf("[BLE] Strip %s max retries (%d), removing\n",
+                              it->address.c_str(), BLE_MAX_RECONNECT_RETRIES);
+                disconnectStrip(*it);
+                it = _strips.erase(it);
                 continue;
             }
-
-            strip.retries++;
-            Serial.printf("[BLE] Reconnecting to %s (attempt %d/%d)...\n",
-                          strip.address.c_str(), strip.retries, BLE_MAX_RECONNECT_RETRIES);
-
-            // Clean up old client
-            if (strip.client) {
-                NimBLEDevice::deleteClient(strip.client);
-                strip.client = nullptr;
-            }
-            strip.writeChar = nullptr;
-
-            connectStrip(strip);
+            it->retries++;
+            Serial.printf("[BLE] Queuing reconnect for %s (attempt %d/%d), heap=%d\n",
+                          it->address.c_str(), it->retries, BLE_MAX_RECONNECT_RETRIES,
+                          ESP.getFreeHeap());
+            requestConnect(it->address.c_str(), it->addrType);
+            // Remove the LOST entry — async connect will re-add if successful
+            disconnectStrip(*it);
+            it = _strips.erase(it);
+            return; // Only one reconnect per loop cycle
+        } else {
+            ++it;
         }
     }
 }

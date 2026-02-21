@@ -33,10 +33,12 @@ private:
     uint32_t _lastCheck = 0;
     uint32_t _lastBeacon = 0;
     uint8_t  _reconnectFailures = 0;
+    bool     _everConnected = false;  // true once WiFi succeeds — never give up
     WiFiUDP  _udp;
 
     void startSTA();
     void startAP();
+    void startAPSTA();
     void startMDNS();
     void sendBeacon();
     String buildAPName();

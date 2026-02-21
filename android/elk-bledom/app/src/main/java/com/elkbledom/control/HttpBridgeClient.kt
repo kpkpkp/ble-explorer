@@ -15,8 +15,9 @@ import java.io.IOException
 class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
     private val TAG = "HttpBridge"
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
     private val JSON_TYPE = "application/json".toMediaType()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -102,9 +103,9 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
                 // First call triggers async scan on bridge
                 get("/api/scan")
 
-                // Poll until scan completes (~5 seconds)
-                for (attempt in 1..8) {
-                    delay(1000)
+                // Poll until scan completes (~5s scan + WiFi recovery on shared radio)
+                for (attempt in 1..12) {
+                    delay(2000)
                     val response = get("/api/scan") ?: continue
                     val data = response.optJSONObject("data") ?: continue
                     val scanning = data.optBoolean("scanning", true)
