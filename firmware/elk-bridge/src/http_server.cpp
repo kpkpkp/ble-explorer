@@ -349,21 +349,32 @@ void HttpServer::handleStop(AsyncWebServerRequest* req) {
 }
 
 void HttpServer::handleScan(AsyncWebServerRequest* req) {
-    std::vector<ScanResult> results;
-    _ble.scan(results);
+    auto state = _ble.scanState();
 
-    JsonDocument doc;
-    JsonObject data = doc["data"].to<JsonObject>();
-    JsonArray devices = data["devices"].to<JsonArray>();
-
-    for (const auto& r : results) {
-        JsonObject dev = devices.add<JsonObject>();
-        dev["name"] = r.name.c_str();
-        dev["address"] = r.address.c_str();
-        dev["rssi"] = r.rssi;
+    if (state == BleManager::ASYNC_DONE) {
+        // Results ready — return them and reset
+        JsonDocument doc;
+        JsonObject data = doc["data"].to<JsonObject>();
+        data["scanning"] = false;
+        JsonArray devices = data["devices"].to<JsonArray>();
+        for (const auto& r : _ble.scanResults()) {
+            JsonObject dev = devices.add<JsonObject>();
+            dev["name"] = r.name.c_str();
+            dev["address"] = r.address.c_str();
+            dev["rssi"] = r.rssi;
+        }
+        _ble.clearScanResults();
+        sendOk(req, doc);
+    } else {
+        // Start scan if idle, or report in-progress
+        if (state == BleManager::ASYNC_IDLE) {
+            _ble.requestScan();
+        }
+        JsonDocument doc;
+        doc["data"]["scanning"] = true;
+        doc["data"]["devices"].to<JsonArray>();
+        sendOk(req, doc);
     }
-
-    sendOk(req, doc);
 }
 
 void HttpServer::handleConnect(AsyncWebServerRequest* req) {
@@ -376,17 +387,31 @@ void HttpServer::handleConnect(AsyncWebServerRequest* req) {
     }
 
     const char* address = doc["address"].as<const char*>();
-    if (_ble.connect(address)) {
-        // Save to NVS
-        int idx = _ble.findStrip(address);
-        if (idx >= 0) {
-            String key = "strip" + String(idx + 1) + "_addr";
-            _prefs.putString(key.c_str(), address);
+
+    // Check if already connected
+    int existing = _ble.findStrip(address);
+    if (existing >= 0) {
+        BleStrip* s = _ble.getStrip(existing);
+        if (s && s->state == BleStrip::READY) {
+            sendOk(req);
+            return;
         }
-        sendOk(req);
-    } else {
-        sendError(req, 500, "Failed to connect to device");
     }
+
+    // Look up address type from last scan results
+    uint8_t addrType = 0;
+    for (const auto& sr : _ble.scanResults()) {
+        if (strcasecmp(sr.address.c_str(), address) == 0) {
+            addrType = sr.addrType;
+            break;
+        }
+    }
+
+    // Start async connect — returns immediately, client polls /status
+    _ble.requestConnect(address, addrType);
+    JsonDocument resp;
+    resp["data"]["connecting"] = true;
+    sendOk(req, resp);
 }
 
 void HttpServer::handleDisconnect(AsyncWebServerRequest* req) {

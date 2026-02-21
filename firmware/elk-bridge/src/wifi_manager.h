@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <ESPmDNS.h>
 #include "config.h"
 
@@ -30,10 +31,13 @@ private:
     char     _pass[64] = {0};
     String   _apName;
     uint32_t _lastCheck = 0;
+    uint32_t _lastBeacon = 0;
     uint8_t  _reconnectFailures = 0;
+    WiFiUDP  _udp;
 
     void startSTA();
     void startAP();
     void startMDNS();
+    void sendBeacon();
     String buildAPName();
 };

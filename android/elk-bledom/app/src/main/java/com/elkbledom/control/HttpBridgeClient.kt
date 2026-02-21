@@ -99,21 +99,36 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         _isScanning.value = true
         scope.launch {
             try {
-                val response = get("/api/scan")
-                val data = response?.optJSONObject("data")
-                val devices = data?.optJSONArray("devices")
-                if (devices != null) {
-                    val list = mutableListOf<DiscoveredDevice>()
-                    for (i in 0 until devices.length()) {
-                        val d = devices.getJSONObject(i)
-                        list.add(DiscoveredDevice(
-                            name = d.getString("name"),
-                            address = d.getString("address"),
-                            rssi = d.optInt("rssi", 0)
-                        ))
+                // First call triggers async scan on bridge
+                get("/api/scan")
+
+                // Poll until scan completes (~5 seconds)
+                for (attempt in 1..8) {
+                    delay(1000)
+                    val response = get("/api/scan") ?: continue
+                    val data = response.optJSONObject("data") ?: continue
+                    val scanning = data.optBoolean("scanning", true)
+
+                    if (!scanning) {
+                        val devices = data.optJSONArray("devices")
+                        if (devices != null) {
+                            val list = mutableListOf<DiscoveredDevice>()
+                            for (i in 0 until devices.length()) {
+                                val d = devices.getJSONObject(i)
+                                list.add(DiscoveredDevice(
+                                    name = d.getString("name"),
+                                    address = d.getString("address"),
+                                    rssi = d.optInt("rssi", 0)
+                                ))
+                            }
+                            _discoveredDevices.value = list
+                        }
+                        return@launch
                     }
-                    _discoveredDevices.value = list
                 }
+                Log.w(TAG, "Scan timed out after polling")
+            } catch (e: Exception) {
+                Log.e(TAG, "Scan failed: ${e.message}")
             } finally {
                 _isScanning.value = false
             }

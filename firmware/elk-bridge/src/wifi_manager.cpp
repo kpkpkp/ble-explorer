@@ -67,8 +67,39 @@ String WiFiManager::buildAPName() {
     return String(buf);
 }
 
+void WiFiManager::sendBeacon() {
+    if (_state != CONNECTED) return;
+
+    IPAddress broadcastIP = WiFi.localIP();
+    broadcastIP[3] = 255; // subnet broadcast
+
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    char beacon[192];
+    snprintf(beacon, sizeof(beacon),
+             "{\"name\":\"ELK-Bridge\",\"ip\":\"%s\",\"port\":%d,"
+             "\"mac\":\"%s\",\"version\":\"%s\",\"uptime\":%lu}",
+             WiFi.localIP().toString().c_str(), HTTP_PORT,
+             macStr, FIRMWARE_VERSION, millis() / 1000);
+
+    _udp.beginPacket(broadcastIP, BEACON_PORT);
+    _udp.write((const uint8_t*)beacon, strlen(beacon));
+    _udp.endPacket();
+}
+
 void WiFiManager::loop() {
     uint32_t now = millis();
+
+    // Send UDP beacon
+    if (_state == CONNECTED && (now - _lastBeacon >= BEACON_INTERVAL_MS)) {
+        _lastBeacon = now;
+        sendBeacon();
+    }
+
     if (now - _lastCheck < WIFI_CHECK_INTERVAL_MS) return;
     _lastCheck = now;
 

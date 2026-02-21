@@ -54,10 +54,13 @@ class MainActivity : ComponentActivity() {
         presetManager = PresetManager(this)
         sessionState = SessionState(this)
 
-        val controlMode = sessionState.controlMode
-        val bridgeUrl = sessionState.bridgeUrl
+        // Allow intent extras to override persisted mode (for adb launch)
+        val controlMode = intent.getStringExtra("control_mode") ?: sessionState.controlMode
+        val bridgeUrl = intent.getStringExtra("bridge_url") ?: sessionState.bridgeUrl
+        Log.i(TAG, "Mode: controlMode=$controlMode bridgeUrl=$bridgeUrl")
 
         if (controlMode == "bridge" && bridgeUrl != null) {
+            Log.i(TAG, "Starting in BRIDGE mode -> $bridgeUrl")
             val bridge = HttpBridgeClient(bridgeUrl)
             bridge.startPolling()
             deviceControl = bridge

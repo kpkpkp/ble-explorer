@@ -6,7 +6,7 @@ void BleManager::init() {
     Serial.println("[BLE] Initialized, power +9 dBm");
 }
 
-bool BleManager::connect(const char* address) {
+bool BleManager::connect(const char* address, uint8_t addrType) {
     // Check if already connected or in progress
     int idx = findStrip(address);
     if (idx >= 0) {
@@ -27,6 +27,7 @@ bool BleManager::connect(const char* address) {
 
     BleStrip strip;
     strip.address = address;
+    strip.addrType = addrType;
     strip.state = BleStrip::CONNECTING;
     strip.retries = 0;
     strip.lastSeen = millis();
@@ -34,14 +35,22 @@ bool BleManager::connect(const char* address) {
     _strips.push_back(strip);
     BleStrip& ref = _strips.back();
 
-    if (connectStrip(ref)) {
-        Serial.printf("[BLE] Connected to %s as strip%d\n", address, (int)_strips.size());
-        return true;
-    } else {
-        Serial.printf("[BLE] Failed to connect to %s\n", address);
-        _strips.pop_back();
-        return false;
+    // Retry connection up to 3 times (weak BLE signal may need multiple attempts)
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        Serial.printf("[BLE] Connect attempt %d/3 to %s\n", attempt, address);
+        if (connectStrip(ref)) {
+            Serial.printf("[BLE] Connected to %s as strip%d\n", address, (int)_strips.size());
+            return true;
+        }
+        if (attempt < 3) {
+            Serial.printf("[BLE] Retrying in 1s...\n");
+            delay(1000);
+        }
     }
+
+    Serial.printf("[BLE] Failed to connect to %s after 3 attempts\n", address);
+    _strips.pop_back();
+    return false;
 }
 
 bool BleManager::connectStrip(BleStrip& strip) {
@@ -56,9 +65,22 @@ bool BleManager::connectStrip(BleStrip& strip) {
 
     strip.client->setConnectTimeout(BLE_CONNECT_TIMEOUT_MS / 1000);
 
-    NimBLEAddress addr(strip.address);
-    if (!strip.client->connect(addr)) {
-        Serial.printf("[BLE] Connection to %s failed\n", strip.address.c_str());
+    // Try with the address type from scan first, then try the other type
+    uint8_t types[] = { strip.addrType, (uint8_t)(strip.addrType == 0 ? 1 : 0) };
+    bool connected = false;
+    for (int t = 0; t < 2 && !connected; t++) {
+        NimBLEAddress addr(strip.address, types[t]);
+        Serial.printf("[BLE] Connecting to %s (addrType=%d)...\n", addr.toString().c_str(), types[t]);
+        if (strip.client->connect(addr)) {
+            connected = true;
+            strip.addrType = types[t];
+        } else {
+            Serial.printf("[BLE] Connection with addrType=%d failed\n", types[t]);
+        }
+    }
+
+    if (!connected) {
+        Serial.printf("[BLE] Connection to %s failed (both address types)\n", strip.address.c_str());
         NimBLEDevice::deleteClient(strip.client);
         strip.client = nullptr;
         strip.state = BleStrip::DISCONNECTED;
@@ -189,12 +211,14 @@ bool BleManager::scan(std::vector<ScanResult>& results) {
 
         if (name.find(DEVICE_NAME_PREFIX) == 0) {
             ScanResult sr;
-            sr.name    = name;
-            sr.address = device.getAddress().toString();
-            sr.rssi    = device.getRSSI();
+            sr.name     = name;
+            sr.address  = device.getAddress().toString();
+            sr.rssi     = device.getRSSI();
+            sr.addrType = device.getAddress().getType();
             results.push_back(sr);
-            Serial.printf("[BLE] Found: %s (%s) RSSI: %d\n",
-                          sr.name.c_str(), sr.address.c_str(), sr.rssi);
+            Serial.printf("[BLE] Found: %s (%s) RSSI: %d addrType: %d\n",
+                          sr.name.c_str(), sr.address.c_str(), sr.rssi,
+                          sr.addrType);
         }
     }
 
@@ -203,7 +227,37 @@ bool BleManager::scan(std::vector<ScanResult>& results) {
     return true;
 }
 
+void BleManager::requestScan() {
+    if (_scanOp == ASYNC_IDLE || _scanOp == ASYNC_DONE) {
+        _scanOp = ASYNC_PENDING;
+    }
+}
+
+void BleManager::requestConnect(const char* address, uint8_t addrType) {
+    if (_connectOp == ASYNC_IDLE || _connectOp == ASYNC_DONE) {
+        _pendingAddr = address;
+        _pendingAddrType = addrType;
+        _connectOp = ASYNC_PENDING;
+    }
+}
+
 void BleManager::loop() {
+    // --- Process async scan (runs in loopTask, WiFi/TCP can preempt) ---
+    if (_scanOp == ASYNC_PENDING) {
+        _scanOp = ASYNC_RUNNING;
+        _asyncScanResults.clear();
+        scan(_asyncScanResults);
+        _scanOp = ASYNC_DONE;
+    }
+
+    // --- Process async connect (runs in loopTask, WiFi/TCP can preempt) ---
+    if (_connectOp == ASYNC_PENDING) {
+        _connectOp = ASYNC_RUNNING;
+        _connectOk = connect(_pendingAddr.c_str(), _pendingAddrType);
+        _connectOp = ASYNC_DONE;
+    }
+
+    // --- Reconnect logic ---
     uint32_t now = millis();
     if (now - _lastReconnectCheck < BLE_RECONNECT_INTERVAL_MS) return;
     _lastReconnectCheck = now;

@@ -26,6 +26,7 @@ CommandDispatcher dispatcher(bleManager, patternEngine);
 Preferences       prefs;
 HttpServer        httpServer(wifiManager, bleManager, dispatcher, patternEngine, prefs);
 StatusLed         statusLed;
+String            bootStrip2;  // deferred strip2 connect address
 
 void setup() {
     Serial.begin(115200);
@@ -46,6 +47,7 @@ void setup() {
     String strip1  = prefs.getString("strip1_addr", "");
     String strip2  = prefs.getString("strip2_addr", "");
 
+
     Serial.printf("[NVS] WiFi SSID: '%s'\n", ssid.c_str());
     Serial.printf("[NVS] Strip 1: '%s'\n", strip1.c_str());
     Serial.printf("[NVS] Strip 2: '%s'\n", strip2.c_str());
@@ -62,21 +64,17 @@ void setup() {
     // --- BLE ---
     bleManager.init();
 
+    // --- HTTP server (start BEFORE BLE connects to stay reachable) ---
+    httpServer.begin();
+
+    // --- Deferred BLE connect (non-blocking, runs in loop()) ---
     if (strip1.length() > 0) {
-        Serial.printf("[Boot] Connecting to strip 1: %s\n", strip1.c_str());
-        bleManager.connect(strip1.c_str());
+        Serial.printf("[Boot] Queuing strip 1 for async connect: %s\n", strip1.c_str());
+        bleManager.requestConnect(strip1.c_str());
     }
     if (strip2.length() > 0) {
-        Serial.printf("[Boot] Connecting to strip 2: %s\n", strip2.c_str());
-        bleManager.connect(strip2.c_str());
+        bootStrip2 = strip2;  // connect after strip1 finishes
     }
-
-    if (bleManager.isAnyConnected()) {
-        statusLed.setPattern(StatusLed::SOLID);
-    }
-
-    // --- HTTP server ---
-    httpServer.begin();
 
     Serial.println();
     Serial.printf("ELK Bridge ready at http://%s/\n", wifiManager.getIP().c_str());
@@ -89,6 +87,27 @@ void loop() {
     wifiManager.loop();
     patternEngine.tick(bleManager);
     bleManager.loop();
+
+    // Save BLE address to NVS after async connect completes
+    if (bleManager.connectState() == BleManager::ASYNC_DONE) {
+        if (bleManager.connectSucceeded()) {
+            const std::string& addr = bleManager.connectAddress();
+            int idx = bleManager.findStrip(addr.c_str());
+            if (idx >= 0) {
+                String key = "strip" + String(idx + 1) + "_addr";
+                prefs.putString(key.c_str(), addr.c_str());
+                Serial.printf("[NVS] Saved %s as %s\n", addr.c_str(), key.c_str());
+            }
+        }
+        bleManager.clearConnectResult();
+
+        // Queue strip2 after strip1 finishes
+        if (bootStrip2.length() > 0) {
+            Serial.printf("[Boot] Queuing strip 2 for async connect: %s\n", bootStrip2.c_str());
+            bleManager.requestConnect(bootStrip2.c_str());
+            bootStrip2 = "";
+        }
+    }
 
     // Update LED based on current state
     updateStatusLed();

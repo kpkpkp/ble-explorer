@@ -11,6 +11,7 @@ struct ScanResult {
     std::string name;
     std::string address;
     int         rssi;
+    uint8_t     addrType;
 };
 
 struct BleStrip {
@@ -23,6 +24,7 @@ struct BleStrip {
     };
 
     std::string                 address;
+    uint8_t                     addrType = 0; // 0=public, 1=random
     NimBLEClient*               client   = nullptr;
     NimBLERemoteCharacteristic* writeChar = nullptr;
     State                       state    = DISCONNECTED;
@@ -43,12 +45,28 @@ struct BleStrip {
 
 class BleManager {
 public:
+    // Async operation states (safe for cross-task communication on single-core)
+    enum AsyncOp { ASYNC_IDLE, ASYNC_PENDING, ASYNC_RUNNING, ASYNC_DONE };
+
     void init();
-    bool connect(const char* address);
+    bool connect(const char* address, uint8_t addrType = 0);
     bool disconnect(const char* address);
     bool write(const uint8_t* cmd, const char* target = "all");
     bool scan(std::vector<ScanResult>& results);
     void loop();
+
+    // --- Async scan (non-blocking, for HTTP handlers) ---
+    void     requestScan();
+    AsyncOp  scanState() const { return _scanOp; }
+    const std::vector<ScanResult>& scanResults() const { return _asyncScanResults; }
+    void     clearScanResults() { _scanOp = ASYNC_IDLE; }
+
+    // --- Async connect (non-blocking, for HTTP handlers) ---
+    void        requestConnect(const char* address, uint8_t addrType = 0);
+    AsyncOp     connectState() const { return _connectOp; }
+    bool        connectSucceeded() const { return _connectOk; }
+    const std::string& connectAddress() const { return _pendingAddr; }
+    void        clearConnectResult() { _connectOp = ASYNC_IDLE; }
 
     size_t     getStripCount() const { return _strips.size(); }
     BleStrip*  getStrip(int idx);
@@ -59,6 +77,14 @@ public:
 private:
     std::vector<BleStrip> _strips;
     uint32_t              _lastReconnectCheck = 0;
+
+    // Async state
+    volatile AsyncOp           _scanOp    = ASYNC_IDLE;
+    std::vector<ScanResult>    _asyncScanResults;
+    volatile AsyncOp           _connectOp = ASYNC_IDLE;
+    std::string                _pendingAddr;
+    uint8_t                    _pendingAddrType = 0;
+    bool                       _connectOk = false;
 
     bool connectStrip(BleStrip& strip);
     void disconnectStrip(BleStrip& strip);
