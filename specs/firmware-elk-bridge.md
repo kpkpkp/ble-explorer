@@ -1,13 +1,13 @@
 # ELK Bridge — Arduino Firmware Architecture
 
-Target: ESP32-C3 SuperMini
+Target: ESP32-S3 SuperMini
 Framework: Arduino ESP32 + NimBLE-Arduino + ESPAsyncWebServer
 
 ## System Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        ESP32-C3 SuperMini                          │
+│                        ESP32-S3 SuperMini                          │
 │                                                                     │
 │  ┌──────────┐    ┌──────────────┐    ┌───────────┐                 │
 │  │  WiFi    │    │  HTTP Server │    │   OTA     │                 │
@@ -32,7 +32,7 @@ Framework: Arduino ESP32 + NimBLE-Arduino + ESPAsyncWebServer
 │  │  Pattern Engine  │    │  BLE Manager   │                        │
 │  │                  │    │                │                        │
 │  │  step sequencer  │───►│  NimBLE client │                        │
-│  │  fade interpolat.│    │  2 connections │                        │
+│  │  fade interpolat.│    │  up to 12 conn│                        │
 │  │  loop control    │    │  GATT writes   │                        │
 │  │  timing (millis) │    │  auto-reconnect│                        │
 │  └──────────────────┘    └───────┬────────┘                        │
@@ -40,7 +40,7 @@ Framework: Arduino ESP32 + NimBLE-Arduino + ESPAsyncWebServer
 │  ┌──────────┐                    │ BLE 5.0                         │
 │  │  Status  │◄── aggregates ─────┘                                 │
 │  │  LED     │    connection +                                      │
-│  │  GPIO8   │    playback state                                    │
+│  │  GPIO47   │    playback state                                    │
 │  └──────────┘                                                      │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -161,7 +161,7 @@ Framework: Arduino ESP32 + NimBLE-Arduino + ESPAsyncWebServer
 │                        BleManager                                 │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│  Connections (max 2):                                             │
+│  Connections (dynamic, up to BLE_MAX_STRIPS):                                             │
 │  ┌────────────────────────────────────────────────────────┐      │
 │  │ BleStrip                                                │      │
 │  │ ├── address : String          "BE:67:00:35:04:9B"      │      │
@@ -170,7 +170,8 @@ Framework: Arduino ESP32 + NimBLE-Arduino + ESPAsyncWebServer
 │  │ ├── state   : enum { DISCONNECTED, CONNECTING,         │      │
 │  │ │                     DISCOVERING, READY, LOST }        │      │
 │  │ ├── retries : uint8_t                                   │      │
-│  │ └── lastSeen : uint32_t      (millis of last success)  │      │
+│  │ ├── lastSeen : uint32_t      (millis of last success)  │      │
+│  │ └── slot     : uint8_t       (0-based strip index)     │      │
 │  └────────────────────────────────────────────────────────┘      │
 │                                                                   │
 │  Connection lifecycle:                                            │
@@ -357,6 +358,11 @@ Framework: Arduino ESP32 + NimBLE-Arduino + ESPAsyncWebServer
 │  With 2 strips: ~200ms per fade frame → effective ~5 fps          │
 │  Fade resolution is coarser with 2 strips but visually adequate   │
 │                                                                   │
+│  Preemption:                                                       │
+│  Any direct command (color, brightness, power, effect, raw)        │
+│  sets state to IDLE, stopping any running pattern. This lets       │
+│  HTTP clients override a pattern without explicit /api/stop.       │
+│                                                                   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -364,7 +370,7 @@ Framework: Arduino ESP32 + NimBLE-Arduino + ESPAsyncWebServer
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                      StatusLed (GPIO8)                            │
+│                      StatusLed (GPIO47)                            │
 ├──────────────────────────────────────────────────────────────────┤
 │                                                                   │
 │  Non-blocking blink patterns driven by millis() in loop().        │
@@ -426,7 +432,7 @@ elk_bridge/
 ├── command_dispatch.h/.cpp  JSON → 9-byte protocol frames
 ├── pattern_engine.h/.cpp   Non-blocking step sequencer
 ├── elk_protocol.h          Protocol constants + frame builders
-├── status_led.h/.cpp       GPIO8 blink patterns
+├── status_led.h/.cpp       GPIO47 blink patterns
 ├── config.h                Pin assignments, timeouts, defaults
 └── html.h                  Embedded HTML dashboard (gzipped)
 ```
@@ -468,7 +474,7 @@ loop() — runs ~1000 iterations/sec when idle
 setup()
   │
   ├── Serial.begin(115200)
-  ├── StatusLed::init(GPIO8)                    LED: fast blink
+  ├── StatusLed::init(GPIO47)                    LED: fast blink
   │
   ├── Preferences::begin("elk-bridge")
   │   └── load wifi_ssid, wifi_pass,
@@ -508,36 +514,36 @@ setup()
 ## Memory Budget (estimated)
 
 ```
-Flash (4 MB total):
+Flash (8 MB typical):
 ┌──────────────────────────────────┬──────────┐
 │ Component                        │ Size     │
 ├──────────────────────────────────┼──────────┤
-│ Arduino core + WiFi + BLE stack  │ ~1.2 MB  │
-│ NimBLE library                   │ ~200 KB  │
+│ Arduino core + WiFi + BLE stack  │ ~1.5 MB  │
+│ NimBLE library                   │ ~250 KB  │
 │ ESPAsyncWebServer                │ ~50 KB   │
-│ Application code                 │ ~50 KB   │
+│ Application code                 │ ~60 KB   │
 │ Embedded HTML (gzipped)          │ ~10 KB   │
-│ OTA partition (second app slot)  │ ~1.5 MB  │
+│ OTA partition (second app slot)  │ ~2.0 MB  │
 │ NVS partition                    │ ~20 KB   │
-│ Spiffs/LittleFS (unused)         │ ~900 KB  │
+│ LittleFS (unused)                │ ~3.5 MB  │
 ├──────────────────────────────────┼──────────┤
-│ Total used                       │ ~3.0 MB  │
-│ Free                             │ ~1.0 MB  │
+│ Total used                       │ ~3.9 MB  │
+│ Free                             │ ~4.1 MB  │
 └──────────────────────────────────┴──────────┘
 
-RAM (400 KB SRAM):
+RAM (512 KB SRAM):
 ┌──────────────────────────────────┬──────────┐
 │ Component                        │ Size     │
 ├──────────────────────────────────┼──────────┤
-│ WiFi buffers                     │ ~40 KB   │
-│ BLE stack (NimBLE)               │ ~30 KB   │
+│ WiFi buffers                     │ ~50 KB   │
+│ BLE stack (NimBLE)               │ ~40 KB   │
 │ HTTP server + request buffers    │ ~10 KB   │
 │ Pattern engine (32 steps max)    │ ~0.5 KB  │
 │ Application variables            │ ~2 KB    │
-│ Stack                            │ ~8 KB    │
+│ Stack (2 cores)                  │ ~16 KB   │
 ├──────────────────────────────────┼──────────┤
-│ Total used                       │ ~90 KB   │
-│ Free heap                        │ ~310 KB  │
+│ Total used                       │ ~120 KB  │
+│ Free heap                        │ ~390 KB  │
 └──────────────────────────────────┴──────────┘
 ```
 
@@ -545,7 +551,7 @@ RAM (400 KB SRAM):
 
 ```
 Platform: espressif32 (Arduino framework)
-Board: esp32-c3-devkitm-1 (or esp32c3 in Arduino board manager)
+Board: lolin_s3_mini (or equivalent ESP32-S3 SuperMini)
 
 Libraries:
 ├── NimBLE-Arduino  ^1.4.0    BLE client (smaller than default BLE stack)

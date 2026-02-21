@@ -40,6 +40,17 @@ class SessionState(context: Context) {
         get() = prefs.getBoolean("was_playing", false)
         set(value) { prefs.edit().putBoolean("was_playing", value).apply() }
 
+    var controlMode: String
+        get() = prefs.getString("control_mode", "ble") ?: "ble"
+        set(value) { prefs.edit().putString("control_mode", value).apply() }
+
+    var bridgeUrl: String?
+        get() = prefs.getString("bridge_url", null)
+        set(value) {
+            if (value != null) prefs.edit().putString("bridge_url", value).apply()
+            else prefs.edit().remove("bridge_url").apply()
+        }
+
     /** Snapshot current state in one call. */
     fun save(
         addresses: List<String>,

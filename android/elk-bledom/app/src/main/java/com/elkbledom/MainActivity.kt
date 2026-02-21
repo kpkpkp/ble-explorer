@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import com.elkbledom.ble.BleManager
 import com.elkbledom.calibration.ColorCalibration
+import com.elkbledom.control.DeviceControl
+import com.elkbledom.control.HttpBridgeClient
 import com.elkbledom.pattern.PatternEngine
 import com.elkbledom.pattern.PresetManager
 import com.elkbledom.ui.DashboardScreen
@@ -27,7 +29,8 @@ private const val TAG = "MainActivity"
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var bleManager: BleManager
+    private lateinit var deviceControl: DeviceControl
+    private var bleManager: BleManager? = null
     private lateinit var calibration: ColorCalibration
     private lateinit var patternEngine: PatternEngine
     private lateinit var presetManager: PresetManager
@@ -47,19 +50,31 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        bleManager = BleManager(this)
         calibration = ColorCalibration(this)
-        patternEngine = PatternEngine(bleManager, calibration)
         presetManager = PresetManager(this)
         sessionState = SessionState(this)
 
-        startLedService()
+        val controlMode = sessionState.controlMode
+        val bridgeUrl = sessionState.bridgeUrl
 
-        if (hasRequiredPermissions()) {
-            launchAutoReconnect()
+        if (controlMode == "bridge" && bridgeUrl != null) {
+            val bridge = HttpBridgeClient(bridgeUrl)
+            bridge.startPolling()
+            deviceControl = bridge
+            // No BLE permissions needed in bridge mode
         } else {
-            requestBlePermissions()
+            val mgr = BleManager(this)
+            bleManager = mgr
+            deviceControl = mgr
+            startLedService()
+            if (hasRequiredPermissions()) {
+                launchAutoReconnect()
+            } else {
+                requestBlePermissions()
+            }
         }
+
+        patternEngine = PatternEngine(deviceControl, calibration)
 
         setContent {
             MaterialTheme(
@@ -73,7 +88,7 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 DashboardScreen(
-                    bleManager = bleManager,
+                    deviceControl = deviceControl,
                     calibration = calibration,
                     patternEngine = patternEngine,
                     presetManager = presetManager,
@@ -90,7 +105,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun saveSession() {
-        val addresses = bleManager.getConnectedAddresses()
+        val addresses = deviceControl.getConnectedAddresses()
         val playback = patternEngine.playbackState.value
         sessionState.save(
             addresses = addresses,
@@ -107,10 +122,10 @@ class MainActivity : ComponentActivity() {
 
         Log.d(TAG, "Auto-reconnecting to ${savedAddresses.size} device(s)")
         activityScope.launch {
-            bleManager.autoReconnect(savedAddresses)
+            deviceControl.autoReconnect(savedAddresses)
 
-            // If playback was active, resume it
-            if (sessionState.wasPlaying) {
+            // If playback was active and at least one device reconnected, resume it
+            if (sessionState.wasPlaying && deviceControl.getConnectedAddresses().isNotEmpty()) {
                 val presetName = sessionState.lastPreset
                 val loop = sessionState.lastLoop
                 val presets = presetManager.allPresets.value
@@ -133,7 +148,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopLedService() {
-        bleManager.disconnectAll()
+        deviceControl.disconnectAll()
         stopService(Intent(this, LedService::class.java))
     }
 

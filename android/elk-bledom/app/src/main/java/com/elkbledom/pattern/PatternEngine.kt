@@ -1,7 +1,8 @@
 package com.elkbledom.pattern
 
-import com.elkbledom.ble.BleManager
-import com.elkbledom.ble.ElkProtocol
+import com.elkbledom.control.DeviceControl
+import com.elkbledom.control.HttpBridgeClient
+import com.elkbledom.control.PatternStepData
 import com.elkbledom.calibration.ColorCalibration
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +27,7 @@ data class PlaybackState(
 )
 
 class PatternEngine(
-    private val bleManager: BleManager,
+    private val deviceControl: DeviceControl,
     private val calibration: ColorCalibration
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -42,14 +43,51 @@ class PatternEngine(
             totalSteps = pattern.size,
             loop = loop
         )
-        playbackJob = scope.launch {
-            runPattern(pattern, loop)
+
+        if (deviceControl is HttpBridgeClient) {
+            // Bridge mode: send pattern to bridge and monitor
+            val stepsData = pattern.map { step ->
+                val (r, g, b) = parseColor(step.color)
+                val (cr, cg, cb) = calibration.apply(r, g, b)
+                PatternStepData(
+                    r = cr, g = cg, b = cb,
+                    brightness = step.brightness,
+                    duration = (step.duration * 1000).toInt(),
+                    transition = step.transition,
+                    fadeTime = (step.fadeTime * 1000).toInt()
+                )
+            }
+            deviceControl.sendPattern(stepsData, loop)
+            // Monitor bridge playback status
+            playbackJob = scope.launch {
+                while (isActive) {
+                    val status = deviceControl.bridgeStatus.value
+                    if (status != null) {
+                        _playbackState.value = _playbackState.value.copy(
+                            state = if (status.playbackState == "idle") "stopped" else "playing",
+                            currentStep = status.playbackStep,
+                            totalSteps = status.playbackTotal,
+                            loop = status.playbackLoop
+                        )
+                        if (status.playbackState == "idle") break
+                    }
+                    delay(500)
+                }
+            }
+        } else {
+            // BLE direct mode: run pattern locally
+            playbackJob = scope.launch {
+                runPattern(pattern, loop)
+            }
         }
     }
 
     fun stop() {
         playbackJob?.cancel()
         playbackJob = null
+        if (deviceControl is HttpBridgeClient) {
+            deviceControl.stopPattern()
+        }
         _playbackState.value = _playbackState.value.copy(
             state = "stopped",
             currentStep = 0
@@ -70,8 +108,8 @@ class PatternEngine(
 
     private suspend fun sendColorAndBrightness(r: Int, g: Int, b: Int, brightnessPct: Int) {
         val (cr, cg, cb) = calibration.apply(r, g, b)
-        bleManager.writeInternal(ElkProtocol.cmdColor(cr, cg, cb))
-        bleManager.writeInternal(ElkProtocol.cmdBrightness(brightnessToByte(brightnessPct)))
+        deviceControl.sendColorSuspend(cr, cg, cb)
+        deviceControl.sendBrightnessSuspend(brightnessPct)
     }
 
     private suspend fun fade(
@@ -88,10 +126,10 @@ class PatternEngine(
             val g = (g1 + (g2 - g1) * t).toInt()
             val b = (b1 + (b2 - b1) * t).toInt()
             val (cr, cg, cb) = calibration.apply(r, g, b)
-            bleManager.writeInternal(ElkProtocol.cmdColor(cr, cg, cb))
+            deviceControl.sendColorSuspend(cr, cg, cb)
             if (kotlin.math.abs(br2 - br1) > 2 || i == steps - 1) {
                 val br = (br1 + (br2 - br1) * t).toInt()
-                bleManager.writeInternal(ElkProtocol.cmdBrightness(brightnessToByte(br)))
+                deviceControl.sendBrightnessSuspend(br)
             }
             delay(33)
         }

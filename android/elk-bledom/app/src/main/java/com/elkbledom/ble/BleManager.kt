@@ -15,6 +15,12 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.util.Log
+import com.elkbledom.control.BridgeStatus
+import com.elkbledom.control.ConnectionState
+import com.elkbledom.control.DeviceControl
+import com.elkbledom.control.DiscoveredDevice
+import com.elkbledom.control.PatternStepData
+import com.elkbledom.control.Target
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,18 +42,6 @@ private const val COMMAND_RETRY_COUNT = 2
 private const val COMMAND_RETRY_DELAY_MS = 50L
 private const val DEVICE_NAME_PREFIX = "ELK-BLEDOM"
 
-enum class ConnectionState {
-    DISCONNECTED,
-    CONNECTING,
-    CONNECTED,
-}
-
-enum class Target {
-    ALL,
-    STRIP1,
-    STRIP2,
-}
-
 /**
  * Android BLE manager for ELK-BLEDOM LED strips.
  *
@@ -59,9 +53,12 @@ enum class Target {
  *
  * Permissions (BLUETOOTH, BLUETOOTH_ADMIN, ACCESS_FINE_LOCATION for
  * SDK < 31) are expected to be requested and granted at the Activity level.
+ *
+ * Implements [DeviceControl] so the app can swap between BLE direct and
+ * WiFi bridge modes using the same interface.
  */
 @SuppressLint("MissingPermission")
-class BleManager(context: Context) {
+class BleManager(context: Context) : DeviceControl {
 
     private val appContext: Context = context.applicationContext
     private val bluetoothManager: BluetoothManager =
@@ -74,15 +71,18 @@ class BleManager(context: Context) {
     // --- Public state flows ---
 
     private val _scanning = MutableStateFlow(false)
-    val isScanning: StateFlow<Boolean> = _scanning.asStateFlow()
+    override val isScanning: StateFlow<Boolean> = _scanning.asStateFlow()
 
-    private val _discoveredDevices = MutableStateFlow<List<BluetoothDevice>>(emptyList())
-    val discoveredDevices: StateFlow<List<BluetoothDevice>> = _discoveredDevices.asStateFlow()
+    private val _discoveredDevices = MutableStateFlow<List<DiscoveredDevice>>(emptyList())
+    override val discoveredDevices: StateFlow<List<DiscoveredDevice>> = _discoveredDevices.asStateFlow()
 
     private val _connectionStates = MutableStateFlow<Map<String, ConnectionState>>(emptyMap())
-    val connectionStates: StateFlow<Map<String, ConnectionState>> = _connectionStates.asStateFlow()
+    override val connectionStates: StateFlow<Map<String, ConnectionState>> = _connectionStates.asStateFlow()
 
-    val target = MutableStateFlow(Target.ALL)
+    override val target = MutableStateFlow(Target.ALL)
+
+    private val _bridgeStatus = MutableStateFlow<BridgeStatus?>(null)
+    override val bridgeStatus: StateFlow<BridgeStatus?> = _bridgeStatus.asStateFlow()
 
     // --- Internal connection bookkeeping ---
 
@@ -126,7 +126,7 @@ class BleManager(context: Context) {
      * devices are emitted through [discoveredDevices]. The scan automatically
      * stops after [timeout] milliseconds.
      */
-    fun scan(timeout: Long = 5000) {
+    override fun scan(timeout: Long) {
         val leScanner = scanner
         if (leScanner == null) {
             Log.w(TAG, "BluetoothLeScanner not available")
@@ -149,7 +149,9 @@ class BleManager(context: Context) {
                 if (!name.startsWith(DEVICE_NAME_PREFIX)) return
                 seen.add(address)
                 Log.d(TAG, "Discovered $name ($address)")
-                _discoveredDevices.value = _discoveredDevices.value + device
+                val rssi = result.rssi
+                _discoveredDevices.value = _discoveredDevices.value +
+                    DiscoveredDevice(name = name, address = address, rssi = rssi)
             }
 
             override fun onScanFailed(errorCode: Int) {
@@ -197,11 +199,11 @@ class BleManager(context: Context) {
     // -----------------------------------------------------------------------
 
     /**
-     * Connect to an ELK-BLEDOM device. Performs GATT connection, service
-     * discovery, and locates the write characteristic on service 0xFFF0.
-     * The result is reflected in [connectionStates].
+     * Connect to an ELK-BLEDOM device by BluetoothDevice object. Performs GATT
+     * connection, service discovery, and locates the write characteristic on
+     * service 0xFFF0. The result is reflected in [connectionStates].
      */
-    fun connect(device: BluetoothDevice) {
+    fun connectDevice(device: BluetoothDevice) {
         val address = device.address
         if (gattMap.containsKey(address)) {
             Log.w(TAG, "Already connected to $address")
@@ -267,9 +269,16 @@ class BleManager(context: Context) {
     }
 
     /**
+     * Connect to an ELK-BLEDOM device by MAC address. Implements [DeviceControl.connect].
+     */
+    override fun connect(address: String) {
+        connectByAddress(address)
+    }
+
+    /**
      * Disconnect and close the GATT connection for the given [address].
      */
-    fun disconnect(address: String) {
+    override fun disconnect(address: String) {
         val gatt = gattMap.remove(address)
         writeCharMap.remove(address)
         gattMutexMap.remove(address)
@@ -288,20 +297,27 @@ class BleManager(context: Context) {
     }
 
     /** Disconnect all connected devices. */
-    fun disconnectAll() {
+    override fun disconnectAll() {
         gattMap.keys.toList().forEach { disconnect(it) }
     }
 
     /** Returns the MAC addresses of all currently connected devices. */
-    fun getConnectedAddresses(): List<String> =
+    override fun getConnectedAddresses(): List<String> =
         _connectionStates.value
             .filter { it.value == ConnectionState.CONNECTED }
             .keys.toList()
 
+    /** Returns the slot name ("ELK-BLEDOM STRIP1", etc.) for an address, or null. */
+    override fun slotFor(address: String): String? = when (address) {
+        strip1Address -> "ELK-BLEDOM STRIP1"
+        strip2Address -> "ELK-BLEDOM STRIP2"
+        else -> null
+    }
+
     /**
      * Connect to a device by its MAC address without scanning. Uses
      * [BluetoothAdapter.getRemoteDevice] to obtain a [BluetoothDevice]
-     * and delegates to [connect].
+     * and delegates to [connectDevice].
      */
     fun connectByAddress(address: String) {
         val adapter = bluetoothAdapter ?: run {
@@ -310,7 +326,7 @@ class BleManager(context: Context) {
         }
         try {
             val device = adapter.getRemoteDevice(address)
-            connect(device)
+            connectDevice(device)
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "Invalid address for connectByAddress: $address", e)
         }
@@ -322,7 +338,7 @@ class BleManager(context: Context) {
      * progress. Returns when all addresses are connected or retries are
      * exhausted.
      */
-    suspend fun autoReconnect(addresses: List<String>, maxRetries: Int = 3) {
+    override suspend fun autoReconnect(addresses: List<String>, maxRetries: Int) {
         if (addresses.isEmpty()) return
         val pending = addresses.toMutableSet()
 
@@ -349,6 +365,48 @@ class BleManager(context: Context) {
         if (pending.isNotEmpty()) {
             Log.w(TAG, "Auto-reconnect: failed to connect to $pending")
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // DeviceControl command interface
+    // -----------------------------------------------------------------------
+
+    override fun sendColor(r: Int, g: Int, b: Int) {
+        write(ElkProtocol.cmdColor(r, g, b))
+    }
+
+    override fun sendBrightness(level: Int) {
+        write(ElkProtocol.cmdBrightness((level * 255 / 100).coerceIn(0, 255)))
+    }
+
+    override fun sendPower(on: Boolean) {
+        write(ElkProtocol.cmdPower(on))
+    }
+
+    override fun sendEffect(code: Int, speed: Int) {
+        write(ElkProtocol.cmdEffect(code, speed))
+    }
+
+    override fun sendRaw(command: ByteArray) {
+        write(command)
+    }
+
+    override suspend fun sendColorSuspend(r: Int, g: Int, b: Int) {
+        writeInternal(ElkProtocol.cmdColor(r, g, b))
+    }
+
+    override suspend fun sendBrightnessSuspend(level: Int) {
+        writeInternal(ElkProtocol.cmdBrightness((level * 255 / 100).coerceIn(0, 255)))
+    }
+
+    /** No-op in BLE mode -- pattern playback is handled locally by PatternEngine. */
+    override fun sendPattern(steps: List<PatternStepData>, loop: Boolean) {
+        // No-op: BLE mode uses local PatternEngine
+    }
+
+    /** No-op in BLE mode -- pattern playback is handled locally by PatternEngine. */
+    override fun stopPattern() {
+        // No-op: BLE mode uses local PatternEngine
     }
 
     // -----------------------------------------------------------------------

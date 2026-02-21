@@ -1,6 +1,5 @@
 package com.elkbledom.ui
 
-import android.bluetooth.BluetoothDevice
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -17,9 +16,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.elkbledom.SessionState
-import com.elkbledom.ble.BleManager
-import com.elkbledom.ble.ConnectionState
-import com.elkbledom.ble.Target
+import com.elkbledom.control.ConnectionState
+import com.elkbledom.control.DeviceControl
+import com.elkbledom.control.Target
 import com.elkbledom.ble.ElkProtocol
 import com.elkbledom.calibration.ColorCalibration
 import com.elkbledom.pattern.PatternEngine
@@ -33,18 +32,19 @@ private val AccentColor = Color(0xFFe94560)
 
 @Composable
 fun DashboardScreen(
-    bleManager: BleManager,
+    deviceControl: DeviceControl,
     calibration: ColorCalibration,
     patternEngine: PatternEngine,
     presetManager: PresetManager,
     sessionState: SessionState,
     onStopService: () -> Unit = {}
 ) {
-    val connectionStates by bleManager.connectionStates.collectAsState()
-    val discoveredDevices by bleManager.discoveredDevices.collectAsState()
-    val isScanning by bleManager.isScanning.collectAsState()
-    val target by bleManager.target.collectAsState()
+    val connectionStates by deviceControl.connectionStates.collectAsState()
+    val discoveredDevices by deviceControl.discoveredDevices.collectAsState()
+    val isScanning by deviceControl.isScanning.collectAsState()
+    val target by deviceControl.target.collectAsState()
     val playbackState by patternEngine.playbackState.collectAsState()
+    val bridgeStatusVal by deviceControl.bridgeStatus.collectAsState()
 
     var red by remember { mutableIntStateOf(255) }
     var green by remember { mutableIntStateOf(255) }
@@ -71,11 +71,21 @@ fun DashboardScreen(
         // Title
         Text("ELK-BLEDOM", style = MaterialTheme.typography.titleLarge, color = AccentColor)
 
+        // --- Bridge Status (only shown in bridge mode) ---
+        bridgeStatusVal?.let { status ->
+            SectionCard("Bridge") {
+                Text("${status.firmwareVersion} | ${status.wifiIP} | ${status.wifiRSSI}dBm",
+                    color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                Text("Uptime: ${status.uptime}s | Heap: ${status.freeHeap / 1024}KB",
+                    color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
         // --- Connection ---
         SectionCard("Connection") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    onClick = { bleManager.scan() },
+                    onClick = { deviceControl.scan() },
                     enabled = !isScanning,
                     colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
                     modifier = Modifier.height(36.dp),
@@ -108,23 +118,37 @@ fun DashboardScreen(
                     }
                 }
             }
-            if (discoveredDevices.isEmpty() && !isScanning) {
+            val discoveredAddresses = discoveredDevices.map { it.address }.toSet()
+            val reconnectedAddresses = connectionStates.keys.filter { it !in discoveredAddresses }
+            if (discoveredDevices.isEmpty() && reconnectedAddresses.isEmpty() && !isScanning) {
                 Text(
                     "No devices found. Tap Scan.", color = Color.Gray,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
+            // Show auto-reconnected devices (not from scan)
+            reconnectedAddresses.forEach { address ->
+                val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
+                val slot = deviceControl.slotFor(address)
+                DeviceRow(slot ?: address, address, state,
+                    onConnect = { },
+                    onDisconnect = {
+                        deviceControl.disconnect(address)
+                        sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
+                    }
+                )
+            }
+            // Show scanned devices
             discoveredDevices.forEach { device ->
-                @Suppress("MissingPermission")
-                val name = device.name ?: "Unknown"
+                val name = device.name
                 val address = device.address
                 val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
                 DeviceRow(name, address, state,
-                    onConnect = { bleManager.connect(device) },
+                    onConnect = { deviceControl.connect(device.address) },
                     onDisconnect = {
-                        bleManager.disconnect(address)
-                        sessionState.connectedAddresses = bleManager.getConnectedAddresses()
+                        deviceControl.disconnect(address)
+                        sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
                     }
                 )
             }
@@ -141,7 +165,7 @@ fun DashboardScreen(
             Target.entries.forEach { t ->
                 FilterChip(
                     selected = target == t,
-                    onClick = { bleManager.target.value = t },
+                    onClick = { deviceControl.target.value = t },
                     label = { Text(t.name.replace("_", " "), style = MaterialTheme.typography.labelSmall) },
                     modifier = Modifier.height(28.dp),
                     colors = FilterChipDefaults.filterChipColors(
@@ -153,14 +177,14 @@ fun DashboardScreen(
             }
             Spacer(Modifier.weight(1f))
             Button(
-                onClick = { bleManager.write(ElkProtocol.cmdPower(true)) },
+                onClick = { deviceControl.sendPower(true) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
                 modifier = Modifier.height(28.dp),
                 contentPadding = PaddingValues(horizontal = 10.dp)
             ) { Text("ON", style = MaterialTheme.typography.labelSmall) }
             Spacer(Modifier.width(4.dp))
             Button(
-                onClick = { bleManager.write(ElkProtocol.cmdPower(false)) },
+                onClick = { deviceControl.sendPower(false) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF666666)),
                 modifier = Modifier.height(28.dp),
                 contentPadding = PaddingValues(horizontal = 10.dp)
@@ -180,7 +204,7 @@ fun DashboardScreen(
                     } else {
                         Triple(r, g, b)
                     }
-                    bleManager.write(ElkProtocol.cmdColor(cr, cg, cb))
+                    deviceControl.sendColor(cr, cg, cb)
                 }
             )
             Spacer(Modifier.height(4.dp))
@@ -190,8 +214,7 @@ fun DashboardScreen(
                     value = brightness,
                     onValueChange = { brightness = it },
                     onValueChangeFinished = {
-                        val level = (brightness * 255 / 100).toInt().coerceIn(0, 255)
-                        bleManager.write(ElkProtocol.cmdBrightness(level))
+                        deviceControl.sendBrightness(brightness.toInt())
                     },
                     valueRange = 0f..100f,
                     modifier = Modifier.weight(1f),
@@ -213,13 +236,13 @@ fun DashboardScreen(
                 onEffectSelected = { name ->
                     selectedEffect = name
                     val code = ElkProtocol.EFFECTS[name] ?: return@EffectsSection
-                    bleManager.write(ElkProtocol.cmdEffect(code, effectSpeed.toInt()))
+                    deviceControl.sendEffect(code, effectSpeed.toInt())
                 },
                 onSpeedChange = { speed ->
                     effectSpeed = speed
                     if (selectedEffect.isNotEmpty()) {
                         val code = ElkProtocol.EFFECTS[selectedEffect] ?: return@EffectsSection
-                        bleManager.write(ElkProtocol.cmdEffect(code, speed.toInt()))
+                        deviceControl.sendEffect(code, speed.toInt())
                     }
                 }
             )
@@ -236,7 +259,7 @@ fun DashboardScreen(
                     sessionState.lastPreset = presetName
                     sessionState.lastLoop = loop
                     sessionState.wasPlaying = true
-                    sessionState.connectedAddresses = bleManager.getConnectedAddresses()
+                    sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
                 },
                 onStop = {
                     patternEngine.stop()
@@ -265,7 +288,7 @@ fun DashboardScreen(
             if (calibrationEnabled) {
                 val (er, eg, eb) = calibration.apply(255, 0, 0)
                 Text(
-                    "Example: #FF0000 → #${String.format("%02X%02X%02X", er, eg, eb)}",
+                    "Example: #FF0000 -> #${String.format("%02X%02X%02X", er, eg, eb)}",
                     color = Color.Gray, style = MaterialTheme.typography.bodySmall
                 )
             }
