@@ -137,9 +137,9 @@ if echo "$COMMAND" | grep -qE '(^|[;&|]\s*)(bash|sh)\s+-c\s'; then
 fi
 
 # 19. curl/wget without pipe (data exfiltration risk in autonomous mode)
-# Allow curl to localhost/127.0.0.1 for dashboard health checks
+# Allow curl to localhost/127.0.0.1 and local LAN (192.168.86.*)
 if echo "$COMMAND" | grep -qE '(^|[;&|]\s*)(curl|wget)\s' && \
-   ! echo "$COMMAND" | grep -qE '(curl|wget)\s+[^|]*(localhost|127\.0\.0\.1)'; then
+   ! echo "$COMMAND" | grep -qE '(curl|wget)\s+[^|]*(localhost|127\.0\.0\.1|192\.168\.86\.)'; then
   deny "MEDIUM" "Network fetch to external host — needs explicit approval"
 fi
 
