@@ -10,6 +10,10 @@ import org.json.JSONArray
  */
 class SessionState(context: Context) {
 
+    companion object {
+        const val DEFAULT_BRIDGE_URL = "http://192.168.86.22"
+    }
+
     private val prefs = context.getSharedPreferences("elk_session", Context.MODE_PRIVATE)
 
     var connectedAddresses: List<String>
@@ -41,15 +45,23 @@ class SessionState(context: Context) {
         set(value) { prefs.edit().putBoolean("was_playing", value).apply() }
 
     var controlMode: String
-        get() = prefs.getString("control_mode", "ble") ?: "ble"
+        get() = prefs.getString("control_mode", "bridge") ?: "bridge"
         set(value) { prefs.edit().putString("control_mode", value).apply() }
 
     var bridgeUrl: String?
-        get() = prefs.getString("bridge_url", null)
+        get() = prefs.getString("bridge_url", DEFAULT_BRIDGE_URL)
         set(value) {
             if (value != null) prefs.edit().putString("bridge_url", value).apply()
             else prefs.edit().remove("bridge_url").apply()
         }
+
+    var autoResumePattern: Boolean
+        get() = prefs.getBoolean("auto_resume_pattern", true)
+        set(value) { prefs.edit().putBoolean("auto_resume_pattern", value).apply() }
+
+    var powerOffOnExit: Boolean
+        get() = prefs.getBoolean("power_off_on_exit", false)
+        set(value) { prefs.edit().putBoolean("power_off_on_exit", value).apply() }
 
     /** Snapshot current state in one call. */
     fun save(

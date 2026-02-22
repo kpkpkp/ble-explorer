@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import com.elkbledom.ble.BleManager
@@ -20,6 +21,7 @@ import com.elkbledom.control.HttpBridgeClient
 import com.elkbledom.pattern.PatternEngine
 import com.elkbledom.pattern.PresetManager
 import com.elkbledom.ui.DashboardScreen
+import com.elkbledom.ui.SettingsDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,6 +59,9 @@ class MainActivity : ComponentActivity() {
         // Allow intent extras to override persisted mode (for adb launch)
         val controlMode = intent.getStringExtra("control_mode") ?: sessionState.controlMode
         val bridgeUrl = intent.getStringExtra("bridge_url") ?: sessionState.bridgeUrl
+        // Persist intent overrides so they stick for future launches
+        if (intent.hasExtra("control_mode")) sessionState.controlMode = controlMode
+        if (intent.hasExtra("bridge_url")) sessionState.bridgeUrl = bridgeUrl
         Log.i(TAG, "Mode: controlMode=$controlMode bridgeUrl=$bridgeUrl")
 
         if (controlMode == "bridge" && bridgeUrl != null) {
@@ -78,6 +83,9 @@ class MainActivity : ComponentActivity() {
         }
 
         patternEngine = PatternEngine(deviceControl, calibration)
+        patternEngine.observeBridgeRestarts(sessionState)
+
+        val isBridgeMode = controlMode == "bridge"
 
         setContent {
             MaterialTheme(
@@ -90,14 +98,34 @@ class MainActivity : ComponentActivity() {
                     onSurface = Color.White
                 )
             ) {
+                var showSettings by remember { mutableStateOf(false) }
+
                 DashboardScreen(
                     deviceControl = deviceControl,
                     calibration = calibration,
                     patternEngine = patternEngine,
                     presetManager = presetManager,
                     sessionState = sessionState,
+                    isBridgeMode = isBridgeMode,
+                    onShowSettings = { showSettings = true },
                     onStopService = { stopLedService() }
                 )
+
+                if (showSettings) {
+                    SettingsDialog(
+                        sessionState = sessionState,
+                        onDismiss = { showSettings = false },
+                        onSave = { mode, url ->
+                            showSettings = false
+                            sessionState.controlMode = mode
+                            sessionState.bridgeUrl = url
+                            // Restart activity to apply mode change
+                            val intent = intent
+                            finish()
+                            startActivity(intent)
+                        }
+                    )
+                }
             }
         }
     }
@@ -105,6 +133,17 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         saveSession()
+    }
+
+    override fun onDestroy() {
+        if (sessionState.powerOffOnExit && deviceControl is HttpBridgeClient) {
+            Log.i(TAG, "Power-off-on-exit: sending power off")
+            deviceControl.sendPower(false)
+        }
+        if (deviceControl is HttpBridgeClient) {
+            (deviceControl as HttpBridgeClient).stopPolling()
+        }
+        super.onDestroy()
     }
 
     private fun saveSession() {

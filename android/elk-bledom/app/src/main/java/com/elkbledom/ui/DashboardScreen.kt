@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.elkbledom.SessionState
 import com.elkbledom.control.ConnectionState
 import com.elkbledom.control.DeviceControl
+import com.elkbledom.control.DiscoveredDevice
 import com.elkbledom.control.Target
 import com.elkbledom.ble.ElkProtocol
 import com.elkbledom.calibration.ColorCalibration
@@ -37,6 +38,8 @@ fun DashboardScreen(
     patternEngine: PatternEngine,
     presetManager: PresetManager,
     sessionState: SessionState,
+    isBridgeMode: Boolean = false,
+    onShowSettings: () -> Unit = {},
     onStopService: () -> Unit = {}
 ) {
     val connectionStates by deviceControl.connectionStates.collectAsState()
@@ -54,6 +57,12 @@ fun DashboardScreen(
     var selectedEffect by remember { mutableStateOf("") }
     var effectSpeed by remember { mutableFloatStateOf(3f) }
 
+    // Overflow menu and dialog state (bridge mode)
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showBridgeInfoDialog by remember { mutableStateOf(false) }
+    var showScanDialog by remember { mutableStateOf(false) }
+    var showBehaviorDialog by remember { mutableStateOf(false) }
+
     val (corrR, corrG, corrB) = if (calibrationEnabled) {
         calibration.apply(red, green, blue)
     } else {
@@ -68,89 +77,140 @@ fun DashboardScreen(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Title
-        Text("ELK-BLEDOM", style = MaterialTheme.typography.titleLarge, color = AccentColor)
-
-        // --- Bridge Status (only shown in bridge mode) ---
-        bridgeStatusVal?.let { status ->
-            SectionCard("Bridge") {
-                Text("${status.firmwareVersion} | ${status.wifiIP} | ${status.wifiRSSI}dBm",
-                    color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                Text("Uptime: ${status.uptime}s | Heap: ${status.freeHeap / 1024}KB",
-                    color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+        // --- Header row with overflow menu ---
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "ELK-BLEDOM",
+                style = MaterialTheme.typography.titleLarge,
+                color = AccentColor,
+                modifier = Modifier.weight(1f)
+            )
+            if (isBridgeMode) {
+                Box {
+                    IconButton(onClick = { showOverflowMenu = true }) {
+                        Icon(Icons.Default.MoreVert, "Menu", tint = Color.White)
+                    }
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Bridge Info") },
+                            onClick = { showOverflowMenu = false; showBridgeInfoDialog = true },
+                            leadingIcon = { Icon(Icons.Default.Info, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Scan for Strips") },
+                            onClick = { showOverflowMenu = false; showScanDialog = true },
+                            leadingIcon = { Icon(Icons.Default.Search, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Behavior") },
+                            onClick = { showOverflowMenu = false; showBehaviorDialog = true },
+                            leadingIcon = { Icon(Icons.Default.Tune, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Settings") },
+                            onClick = { showOverflowMenu = false; onShowSettings() },
+                            leadingIcon = { Icon(Icons.Default.Settings, null) }
+                        )
+                    }
+                }
             }
         }
 
-        // --- Connection ---
-        SectionCard("Connection") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { deviceControl.scan() },
-                    enabled = !isScanning,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp)
-                ) {
-                    if (isScanning) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Scanning...", style = MaterialTheme.typography.labelMedium)
-                    } else {
-                        Icon(Icons.Default.Search, "Scan", modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Scan", style = MaterialTheme.typography.labelMedium)
-                    }
+        // --- Strip status bar (bridge mode only) ---
+        if (isBridgeMode) {
+            StripStatusBar(
+                connectionStates = connectionStates,
+                target = target,
+                deviceControl = deviceControl
+            )
+        }
+
+        // --- Connection card (BLE mode only) ---
+        if (!isBridgeMode) {
+            // Bridge status card (BLE mode shows inline if available)
+            bridgeStatusVal?.let { status ->
+                SectionCard("Bridge") {
+                    Text("${status.firmwareVersion} | ${status.wifiIP} | ${status.wifiRSSI}dBm",
+                        color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Text("Uptime: ${status.uptime}s | Heap: ${status.freeHeap / 1024}KB",
+                        color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                 }
-                if (connectionStates.values.any { it == ConnectionState.CONNECTED }) {
+            }
+
+            SectionCard("Connection") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = onStopService,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF666666)),
+                        onClick = { deviceControl.scan() },
+                        enabled = !isScanning,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
                         modifier = Modifier.height(36.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp)
                     ) {
-                        Icon(Icons.Default.Close, "Stop", modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Stop All", style = MaterialTheme.typography.labelMedium)
+                        if (isScanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("Scanning...", style = MaterialTheme.typography.labelMedium)
+                        } else {
+                            Icon(Icons.Default.Search, "Scan", modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Scan", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    if (connectionStates.values.any { it == ConnectionState.CONNECTED }) {
+                        Button(
+                            onClick = onStopService,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF666666)),
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp)
+                        ) {
+                            Icon(Icons.Default.Close, "Stop", modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Stop All", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
-            }
-            val discoveredAddresses = discoveredDevices.map { it.address }.toSet()
-            val reconnectedAddresses = connectionStates.keys.filter { it !in discoveredAddresses }
-            if (discoveredDevices.isEmpty() && reconnectedAddresses.isEmpty() && !isScanning) {
-                Text(
-                    "No devices found. Tap Scan.", color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            // Show auto-reconnected devices (not from scan)
-            reconnectedAddresses.forEach { address ->
-                val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
-                val slot = deviceControl.slotFor(address)
-                DeviceRow(slot ?: address, address, state,
-                    onConnect = { },
-                    onDisconnect = {
-                        deviceControl.disconnect(address)
-                        sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
-                    }
-                )
-            }
-            // Show scanned devices
-            discoveredDevices.forEach { device ->
-                val name = device.name
-                val address = device.address
-                val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
-                DeviceRow(name, address, state,
-                    onConnect = { deviceControl.connect(device.address) },
-                    onDisconnect = {
-                        deviceControl.disconnect(address)
-                        sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
-                    }
-                )
+                val discoveredAddresses = discoveredDevices.map { it.address }.toSet()
+                val reconnectedAddresses = connectionStates.keys.filter { it !in discoveredAddresses }
+                if (discoveredDevices.isEmpty() && reconnectedAddresses.isEmpty() && !isScanning) {
+                    Text(
+                        "No devices found. Tap Scan.", color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                reconnectedAddresses.forEach { address ->
+                    val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
+                    val slot = deviceControl.slotFor(address)
+                    DeviceRow(slot ?: address, address, state,
+                        onConnect = { },
+                        onDisconnect = {
+                            deviceControl.disconnect(address)
+                            sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
+                        }
+                    )
+                }
+                discoveredDevices.forEach { device ->
+                    val name = device.name
+                    val address = device.address
+                    val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
+                    DeviceRow(name, address, state,
+                        onConnect = { deviceControl.connect(device.address) },
+                        onDisconnect = {
+                            deviceControl.disconnect(address)
+                            sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
+                        }
+                    )
+                }
             }
         }
 
@@ -296,6 +356,31 @@ fun DashboardScreen(
 
         Spacer(Modifier.height(16.dp))
     }
+
+    // --- Dialogs (bridge mode) ---
+    if (showBridgeInfoDialog) {
+        BridgeInfoDialog(
+            bridgeStatus = bridgeStatusVal,
+            onDismiss = { showBridgeInfoDialog = false }
+        )
+    }
+
+    if (showScanDialog) {
+        ScanDialog(
+            deviceControl = deviceControl,
+            connectionStates = connectionStates,
+            discoveredDevices = discoveredDevices,
+            isScanning = isScanning,
+            onDismiss = { showScanDialog = false }
+        )
+    }
+
+    if (showBehaviorDialog) {
+        BehaviorDialog(
+            sessionState = sessionState,
+            onDismiss = { showBehaviorDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -411,4 +496,275 @@ private fun EffectsSection(
         Text("${effectSpeed.toInt()}", color = Color.White, modifier = Modifier.width(20.dp),
             style = MaterialTheme.typography.labelMedium)
     }
+}
+
+@Composable
+private fun StripStatusBar(
+    connectionStates: Map<String, ConnectionState>,
+    target: Target,
+    deviceControl: DeviceControl
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CardColor, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (connectionStates.isEmpty()) {
+            Text(
+                "No strips connected",
+                color = Color.Gray,
+                style = MaterialTheme.typography.bodySmall
+            )
+        } else {
+            val addresses = connectionStates.keys.toList()
+            addresses.forEachIndexed { index, address ->
+                val state = connectionStates[address] ?: ConnectionState.DISCONNECTED
+                val stripTarget = when (index) {
+                    0 -> Target.STRIP1
+                    1 -> Target.STRIP2
+                    else -> Target.ALL
+                }
+                val isSelected = target == stripTarget
+                val shortAddr = if (address.length >= 8) "..${address.takeLast(5)}" else address
+                val dotColor = when (state) {
+                    ConnectionState.CONNECTED -> Color(0xFF4CAF50)
+                    ConnectionState.CONNECTING -> Color(0xFFFFC107)
+                    ConnectionState.DISCONNECTED -> Color.Gray
+                }
+
+                FilterChip(
+                    selected = isSelected,
+                    onClick = {
+                        deviceControl.target.value = if (isSelected) Target.ALL else stripTarget
+                    },
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(dotColor)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "STRIP${index + 1} ($shortAddr)",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    },
+                    modifier = Modifier.height(32.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = AccentColor,
+                        selectedLabelColor = Color.White
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BridgeInfoDialog(
+    bridgeStatus: com.elkbledom.control.BridgeStatus?,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardColor,
+        title = { Text("Bridge Info", color = AccentColor) },
+        text = {
+            if (bridgeStatus != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    InfoRow("Firmware", bridgeStatus.firmwareVersion)
+                    InfoRow("WiFi IP", bridgeStatus.wifiIP)
+                    InfoRow("SSID", bridgeStatus.wifiSSID)
+                    InfoRow("RSSI", "${bridgeStatus.wifiRSSI} dBm")
+                    InfoRow("Uptime", "${bridgeStatus.uptime}s")
+                    InfoRow("Free Heap", "${bridgeStatus.freeHeap / 1024} KB")
+                    if (bridgeStatus.playbackState != "idle") {
+                        InfoRow("Playback", "${bridgeStatus.playbackState} " +
+                            "(step ${bridgeStatus.playbackStep + 1}/${bridgeStatus.playbackTotal})")
+                    }
+                }
+            } else {
+                Text("Bridge not responding", color = Color.Gray)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = AccentColor)
+            }
+        }
+    )
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+        Text(value, color = Color.White, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun ScanDialog(
+    deviceControl: DeviceControl,
+    connectionStates: Map<String, ConnectionState>,
+    discoveredDevices: List<DiscoveredDevice>,
+    isScanning: Boolean,
+    onDismiss: () -> Unit
+) {
+    // Auto-trigger scan on open
+    LaunchedEffect(Unit) {
+        deviceControl.scan()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardColor,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Scan for Strips", color = AccentColor, modifier = Modifier.weight(1f))
+                if (isScanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = AccentColor,
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Connected strips
+                if (connectionStates.isNotEmpty()) {
+                    Text("Connected", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                    connectionStates.forEach { (address, state) ->
+                        val slot = deviceControl.slotFor(address)
+                        DeviceRow(
+                            name = slot ?: address,
+                            address = address,
+                            state = state,
+                            onConnect = { },
+                            onDisconnect = { deviceControl.disconnect(address) }
+                        )
+                    }
+                }
+
+                // Discovered (not already connected)
+                val connectedAddrs = connectionStates.keys
+                val newDevices = discoveredDevices.filter { it.address !in connectedAddrs }
+                if (newDevices.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("Discovered", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                    newDevices.forEach { device ->
+                        DeviceRow(
+                            name = device.name,
+                            address = device.address,
+                            state = ConnectionState.DISCONNECTED,
+                            onConnect = { deviceControl.connect(device.address) },
+                            onDisconnect = { }
+                        )
+                    }
+                }
+
+                if (!isScanning && discoveredDevices.isEmpty() && connectionStates.isEmpty()) {
+                    Text(
+                        "No devices found",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!isScanning) {
+                    TextButton(onClick = { deviceControl.scan() }) {
+                        Text("Rescan", color = AccentColor)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Close", color = Color.Gray)
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun BehaviorDialog(
+    sessionState: SessionState,
+    onDismiss: () -> Unit
+) {
+    var autoResume by remember { mutableStateOf(sessionState.autoResumePattern) }
+    var powerOff by remember { mutableStateOf(sessionState.powerOffOnExit) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardColor,
+        title = { Text("Behavior", color = AccentColor) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-resume pattern", color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text("Re-send pattern to bridge after it restarts",
+                            color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = autoResume,
+                        onCheckedChange = {
+                            autoResume = it
+                            sessionState.autoResumePattern = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = AccentColor,
+                            checkedTrackColor = AccentColor.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Power off on exit", color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text("Turn off all strips when app closes",
+                            color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = powerOff,
+                        onCheckedChange = {
+                            powerOff = it
+                            sessionState.powerOffOnExit = it
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = AccentColor,
+                            checkedTrackColor = AccentColor.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = AccentColor)
+            }
+        }
+    )
 }

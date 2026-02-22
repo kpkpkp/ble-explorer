@@ -1,5 +1,7 @@
 package com.elkbledom.pattern
 
+import android.util.Log
+import com.elkbledom.SessionState
 import com.elkbledom.control.DeviceControl
 import com.elkbledom.control.HttpBridgeClient
 import com.elkbledom.control.PatternStepData
@@ -30,14 +32,22 @@ class PatternEngine(
     private val deviceControl: DeviceControl,
     private val calibration: ColorCalibration
 ) {
+    private val TAG = "PatternEngine"
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var playbackJob: Job? = null
+    private var restartObserverJob: Job? = null
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
+    // Cache for bridge restart re-send
+    private var _lastPattern: List<PatternStep>? = null
+    private var _lastLoop: Boolean = false
+
     fun play(pattern: List<PatternStep>, loop: Boolean) {
         stop()
+        _lastPattern = pattern
+        _lastLoop = loop
         _playbackState.value = PlaybackState(
             state = "playing",
             totalSteps = pattern.size,
@@ -132,6 +142,22 @@ class PatternEngine(
                 deviceControl.sendBrightnessSuspend(br)
             }
             delay(33)
+        }
+    }
+
+    fun observeBridgeRestarts(sessionState: SessionState) {
+        if (deviceControl !is HttpBridgeClient) return
+        restartObserverJob?.cancel()
+        restartObserverJob = scope.launch {
+            deviceControl.bridgeRestarted.collect {
+                if (!sessionState.autoResumePattern) return@collect
+                val pattern = _lastPattern ?: return@collect
+                if (_playbackState.value.state != "playing") return@collect
+                Log.i(TAG, "Bridge restarted — re-sending pattern (${pattern.size} steps)")
+                // Small delay to let bridge finish booting
+                delay(3000)
+                play(pattern, _lastLoop)
+            }
         }
     }
 

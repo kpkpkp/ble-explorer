@@ -65,8 +65,14 @@ void setup() {
     // --- BLE ---
     bleManager.init();
 
+    // --- Pattern engine (needs NVS reference) ---
+    patternEngine.begin(prefs);
+
     // --- HTTP server (start BEFORE BLE connects to stay reachable) ---
     httpServer.begin();
+
+    // --- Restore saved pattern from NVS (after HTTP so bridge is reachable) ---
+    patternEngine.loadFromNVS(bleManager);
 
     // --- Deferred BLE connect (non-blocking, runs in loop()) ---
     if (strip1.length() > 0) {

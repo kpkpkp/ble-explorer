@@ -2,8 +2,11 @@ package com.elkbledom.control
 
 import android.util.Log
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -15,8 +18,8 @@ import java.io.IOException
 class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
     private val TAG = "HttpBridge"
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
     private val JSON_TYPE = "application/json".toMediaType()
@@ -37,6 +40,10 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
     override val bridgeStatus: StateFlow<BridgeStatus?> = _bridgeStatus.asStateFlow()
 
     private var statusPollJob: Job? = null
+    private var _lastKnownUptime: Long = -1
+
+    private val _bridgeRestarted = MutableSharedFlow<Unit>(replay = 0, extraBufferCapacity = 1)
+    val bridgeRestarted: SharedFlow<Unit> = _bridgeRestarted.asSharedFlow()
 
     fun startPolling() {
         statusPollJob?.cancel()
@@ -64,19 +71,27 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         val wifi = data.optJSONObject("wifi")
         val playback = data.optJSONObject("playback")
         val firmware = data.optJSONObject("firmware")
+        val uptime = firmware?.optLong("uptime", 0) ?: 0
         _bridgeStatus.value = BridgeStatus(
             wifiState = wifi?.optString("state", "unknown") ?: "unknown",
             wifiSSID = wifi?.optString("ssid", "") ?: "",
             wifiIP = wifi?.optString("ip", "") ?: "",
             wifiRSSI = wifi?.optInt("rssi", 0) ?: 0,
             firmwareVersion = firmware?.optString("version", "?") ?: "?",
-            uptime = firmware?.optLong("uptime", 0) ?: 0,
+            uptime = uptime,
             freeHeap = firmware?.optLong("freeHeap", 0) ?: 0,
             playbackState = playback?.optString("state", "idle") ?: "idle",
             playbackStep = playback?.optInt("currentStep", 0) ?: 0,
             playbackTotal = playback?.optInt("totalSteps", 0) ?: 0,
             playbackLoop = playback?.optBoolean("loop", false) ?: false
         )
+
+        // Detect bridge restart: uptime went backwards
+        if (_lastKnownUptime > 0 && uptime < _lastKnownUptime) {
+            Log.w(TAG, "Bridge restarted! uptime=$uptime < lastKnown=$_lastKnownUptime")
+            _bridgeRestarted.tryEmit(Unit)
+        }
+        _lastKnownUptime = uptime
 
         val ble = data.optJSONObject("ble")
         val strips = ble?.optJSONArray("strips")

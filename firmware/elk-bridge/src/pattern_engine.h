@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include "config.h"
 #include "ble_manager.h"
 
@@ -22,9 +23,14 @@ public:
         FADING
     };
 
+    void begin(Preferences& prefs);
     void play(PatternStep* steps, uint8_t count, bool loop, const char* target = "all");
     void stop();
     void tick(BleManager& ble);
+
+    void saveToNVS();
+    void loadFromNVS(BleManager& ble);
+    void clearNVS();
 
     bool    isPlaying() const { return _state != IDLE; }
     uint8_t getCurrentStep() const { return _currentStep; }
@@ -42,6 +48,7 @@ public:
     }
 
 private:
+    Preferences* _prefs = nullptr;
     PatternStep _steps[PATTERN_MAX_STEPS];
     uint8_t     _stepCount = 0;
     uint8_t     _currentStep = 0;
