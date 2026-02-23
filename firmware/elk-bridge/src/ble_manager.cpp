@@ -256,13 +256,16 @@ void BleManager::loop() {
     if (now - _lastReconnectCheck < BLE_RECONNECT_INTERVAL_MS) return;
     _lastReconnectCheck = now;
 
-    // Check connection health
+    // Check connection health and poll RSSI
     for (auto& strip : _strips) {
         if (strip.state == BleStrip::READY) {
-            if (strip.client && !strip.client->isConnected()) {
+            if (strip.client && strip.client->isConnected()) {
+                strip.rssi = strip.client->getRssi();
+            } else {
                 Serial.printf("[BLE] Strip %s lost connection\n", strip.address.c_str());
                 strip.state = BleStrip::LOST;
                 strip.retries = 0;
+                strip.rssi = 0;
                 disconnectStrip(strip);
                 strip.state = BleStrip::LOST; // restore after disconnectStrip sets DISCONNECTED
             }

@@ -73,4 +73,5 @@ interface DeviceControl {
     fun stopPattern()
 
     val bridgeStatus: StateFlow<BridgeStatus?>
+    val stripRssi: StateFlow<Map<String, Int>>  // address → dBm
 }

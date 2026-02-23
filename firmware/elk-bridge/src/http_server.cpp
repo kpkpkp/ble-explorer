@@ -258,6 +258,7 @@ void HttpServer::handleStatus(AsyncWebServerRequest* req) {
             stripObj["address"] = s->address.c_str();
             stripObj["state"] = s->stateStr();
             stripObj["slot"] = "strip" + String(i + 1);
+            stripObj["rssi"] = s->rssi;
             if (s->state == BleStrip::READY) connected++;
         }
     }

@@ -30,6 +30,7 @@ struct BleStrip {
     State                       state    = DISCONNECTED;
     uint8_t                     retries  = 0;
     uint32_t                    lastSeen = 0;
+    int                         rssi     = 0; // last polled RSSI (dBm), 0 = unknown
 
     const char* stateStr() const {
         switch (state) {

@@ -2,6 +2,7 @@ package com.elkbledom
 
 import android.content.Context
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Persists session state (connected devices, last preset, playback) across
@@ -62,6 +63,20 @@ class SessionState(context: Context) {
     var powerOffOnExit: Boolean
         get() = prefs.getBoolean("power_off_on_exit", false)
         set(value) { prefs.edit().putBoolean("power_off_on_exit", value).apply() }
+
+    var stripNames: Map<String, String>
+        get() {
+            val json = prefs.getString("strip_names", null) ?: return emptyMap()
+            return try {
+                val obj = JSONObject(json)
+                obj.keys().asSequence().associateWith { obj.getString(it) }
+            } catch (_: Exception) { emptyMap() }
+        }
+        set(value) {
+            val obj = JSONObject()
+            value.forEach { (k, v) -> obj.put(k, v) }
+            prefs.edit().putString("strip_names", obj.toString()).apply()
+        }
 
     /** Snapshot current state in one call. */
     fun save(

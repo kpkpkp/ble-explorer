@@ -84,6 +84,8 @@ class BleManager(context: Context) : DeviceControl {
     private val _bridgeStatus = MutableStateFlow<BridgeStatus?>(null)
     override val bridgeStatus: StateFlow<BridgeStatus?> = _bridgeStatus.asStateFlow()
 
+    override val stripRssi: StateFlow<Map<String, Int>> = MutableStateFlow(emptyMap())
+
     // --- Internal connection bookkeeping ---
 
     /** Address of the first strip that connected (STRIP1). */

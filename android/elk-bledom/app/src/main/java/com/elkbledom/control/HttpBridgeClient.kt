@@ -39,6 +39,9 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
     private val _bridgeStatus = MutableStateFlow<BridgeStatus?>(null)
     override val bridgeStatus: StateFlow<BridgeStatus?> = _bridgeStatus.asStateFlow()
 
+    private val _stripRssi = MutableStateFlow<Map<String, Int>>(emptyMap())
+    override val stripRssi: StateFlow<Map<String, Int>> = _stripRssi.asStateFlow()
+
     private var statusPollJob: Job? = null
     private var _lastKnownUptime: Long = -1
 
@@ -97,6 +100,7 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         val strips = ble?.optJSONArray("strips")
         if (strips != null) {
             val states = mutableMapOf<String, ConnectionState>()
+            val rssiMap = mutableMapOf<String, Int>()
             for (i in 0 until strips.length()) {
                 val strip = strips.getJSONObject(i)
                 val addr = strip.getString("address")
@@ -106,8 +110,11 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
                     else -> ConnectionState.DISCONNECTED
                 }
                 states[addr] = state
+                val rssi = strip.optInt("rssi", 0)
+                if (rssi != 0) rssiMap[addr] = rssi
             }
             _connectionStates.value = states
+            _stripRssi.value = rssiMap
         }
     }
 

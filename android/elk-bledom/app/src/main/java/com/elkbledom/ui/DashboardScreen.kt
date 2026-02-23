@@ -48,6 +48,7 @@ fun DashboardScreen(
     val target by deviceControl.target.collectAsState()
     val playbackState by patternEngine.playbackState.collectAsState()
     val bridgeStatusVal by deviceControl.bridgeStatus.collectAsState()
+    val stripRssiState by deviceControl.stripRssi.collectAsState()
 
     var red by remember { mutableIntStateOf(255) }
     var green by remember { mutableIntStateOf(255) }
@@ -57,6 +58,7 @@ fun DashboardScreen(
     var selectedEffect by remember { mutableStateOf("") }
     var effectSpeed by remember { mutableFloatStateOf(3f) }
     var colorTempWarm by remember { mutableFloatStateOf(50f) }
+    var showHelp by remember { mutableStateOf(false) }
 
     // Overflow menu and dialog state (bridge mode)
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -89,6 +91,10 @@ fun DashboardScreen(
                 color = AccentColor,
                 modifier = Modifier.weight(1f)
             )
+            IconButton(onClick = { showHelp = !showHelp }) {
+                Icon(Icons.Default.HelpOutline, "Help",
+                    tint = if (showHelp) AccentColor else Color.White)
+            }
             if (isBridgeMode) {
                 Box {
                     IconButton(onClick = { showOverflowMenu = true }) {
@@ -127,9 +133,12 @@ fun DashboardScreen(
         if (isBridgeMode) {
             StripStatusBar(
                 connectionStates = connectionStates,
+                stripRssi = stripRssiState,
+                stripNames = sessionState.stripNames,
                 target = target,
                 deviceControl = deviceControl
             )
+            if (showHelp) HelpText("Dot: green = connected, yellow = connecting, gray = disconnected. Tap chip to target one strip.")
         }
 
         // --- Connection card (BLE mode only) ---
@@ -251,6 +260,7 @@ fun DashboardScreen(
                 contentPadding = PaddingValues(horizontal = 10.dp)
             ) { Text("OFF", style = MaterialTheme.typography.labelSmall) }
         }
+        if (showHelp) HelpText("ALL sends to both strips. STRIP1/STRIP2 targets one. ON/OFF controls power.")
 
         // --- Color + Brightness (merged) ---
         SectionCard("Color") {
@@ -268,6 +278,7 @@ fun DashboardScreen(
                     deviceControl.sendColor(cr, cg, cb)
                 }
             )
+            if (showHelp) HelpText("Tap swatch or drag sliders. Input = your color, Output = after calibration.")
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.BrightnessLow, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
@@ -287,6 +298,7 @@ fun DashboardScreen(
                 Spacer(Modifier.width(4.dp))
                 Text("${brightness.toInt()}%", color = Color.White, style = MaterialTheme.typography.labelMedium)
             }
+            if (showHelp) HelpText("Strip brightness 0-100%. Applied on slider release.")
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("W", color = Color(0xFFFFB74D), style = MaterialTheme.typography.labelSmall,
@@ -312,6 +324,7 @@ fun DashboardScreen(
                 Text("C", color = Color(0xFF90CAF9), style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.width(18.dp))
             }
+            if (showHelp) HelpText("White color temperature. Left = warm (yellowish), right = cool (bluish).")
         }
 
         // --- Effects ---
@@ -332,6 +345,7 @@ fun DashboardScreen(
                     }
                 }
             )
+            if (showHelp) HelpText("27 builtin effects run on the strip controller. Speed slider adjusts without restarting.")
         }
 
         // --- Patterns ---
@@ -353,6 +367,7 @@ fun DashboardScreen(
                     sessionState.wasPlaying = false
                 }
             )
+            if (showHelp) HelpText("Custom color sequences run on the bridge. Survives app disconnect and bridge reboot.")
         }
 
         // --- Calibration ---
@@ -379,6 +394,7 @@ fun DashboardScreen(
                     color = Color.Gray, style = MaterialTheme.typography.bodySmall
                 )
             }
+            if (showHelp) HelpText("Corrects color drift \u2014 maps your chosen color to what the strip actually shows.")
         }
 
         Spacer(Modifier.height(16.dp))
@@ -388,6 +404,7 @@ fun DashboardScreen(
     if (showBridgeInfoDialog) {
         BridgeInfoDialog(
             bridgeStatus = bridgeStatusVal,
+            connectionStates = connectionStates,
             onDismiss = { showBridgeInfoDialog = false }
         )
     }
@@ -405,6 +422,7 @@ fun DashboardScreen(
     if (showBehaviorDialog) {
         BehaviorDialog(
             sessionState = sessionState,
+            connectionStates = connectionStates,
             onDismiss = { showBehaviorDialog = false }
         )
     }
@@ -528,6 +546,8 @@ private fun EffectsSection(
 @Composable
 private fun StripStatusBar(
     connectionStates: Map<String, ConnectionState>,
+    stripRssi: Map<String, Int>,
+    stripNames: Map<String, String>,
     target: Target,
     deviceControl: DeviceControl
 ) {
@@ -555,7 +575,9 @@ private fun StripStatusBar(
                     else -> Target.ALL
                 }
                 val isSelected = target == stripTarget
-                val shortAddr = if (address.length >= 8) "..${address.takeLast(5)}" else address
+                val name = stripNames[address] ?: "Strip${index + 1}"
+                val rssi = stripRssi[address] ?: 0
+                val rssiStr = if (rssi != 0) " ${rssi}dBm" else ""
                 val dotColor = when (state) {
                     ConnectionState.CONNECTED -> Color(0xFF4CAF50)
                     ConnectionState.CONNECTING -> Color(0xFFFFC107)
@@ -577,7 +599,7 @@ private fun StripStatusBar(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                "STRIP${index + 1} ($shortAddr)",
+                                "$name$rssiStr",
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }
@@ -596,6 +618,7 @@ private fun StripStatusBar(
 @Composable
 private fun BridgeInfoDialog(
     bridgeStatus: com.elkbledom.control.BridgeStatus?,
+    connectionStates: Map<String, ConnectionState>,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -614,6 +637,13 @@ private fun BridgeInfoDialog(
                     if (bridgeStatus.playbackState != "idle") {
                         InfoRow("Playback", "${bridgeStatus.playbackState} " +
                             "(step ${bridgeStatus.playbackStep + 1}/${bridgeStatus.playbackTotal})")
+                    }
+                    if (connectionStates.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Strip MACs", color = AccentColor, style = MaterialTheme.typography.titleSmall)
+                        connectionStates.entries.forEachIndexed { i, (addr, _) ->
+                            InfoRow("Strip ${i + 1}", addr)
+                        }
                     }
                 }
             } else {
@@ -637,6 +667,12 @@ private fun InfoRow(label: String, value: String) {
         Text(label, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
         Text(value, color = Color.White, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+@Composable
+private fun HelpText(text: String) {
+    Text(text, color = Color(0xFFFFD54F), style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier.padding(start = 4.dp, top = 2.dp))
 }
 
 @Composable
@@ -729,17 +765,55 @@ private fun ScanDialog(
 @Composable
 private fun BehaviorDialog(
     sessionState: SessionState,
+    connectionStates: Map<String, ConnectionState>,
     onDismiss: () -> Unit
 ) {
     var autoResume by remember { mutableStateOf(sessionState.autoResumePattern) }
     var powerOff by remember { mutableStateOf(sessionState.powerOffOnExit) }
 
+    val addresses = connectionStates.keys.toList()
+    val savedNames = sessionState.stripNames
+    val nameStates = remember(addresses) {
+        addresses.mapIndexed { index, addr ->
+            addr to mutableStateOf(savedNames[addr] ?: "Strip${index + 1}")
+        }
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            // Save strip names on dismiss
+            val names = nameStates.associate { (addr, state) -> addr to state.value }
+                .filter { (_, v) -> v.isNotBlank() }
+            sessionState.stripNames = names
+            onDismiss()
+        },
         containerColor = CardColor,
         title = { Text("Behavior", color = AccentColor) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (addresses.isNotEmpty()) {
+                    Text("Strip Names", color = AccentColor, style = MaterialTheme.typography.titleSmall)
+                    nameStates.forEachIndexed { index, (_, nameState) ->
+                        var name by nameState
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text("Strip ${index + 1}") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = MaterialTheme.typography.bodySmall,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = AccentColor,
+                                unfocusedBorderColor = Color.Gray,
+                                focusedLabelColor = AccentColor,
+                                unfocusedLabelColor = Color.Gray
+                            )
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -789,7 +863,12 @@ private fun BehaviorDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                val names = nameStates.associate { (addr, state) -> addr to state.value }
+                    .filter { (_, v) -> v.isNotBlank() }
+                sessionState.stripNames = names
+                onDismiss()
+            }) {
                 Text("Close", color = AccentColor)
             }
         }
