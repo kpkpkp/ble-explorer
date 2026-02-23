@@ -387,6 +387,14 @@ class BleManager(context: Context) : DeviceControl {
         write(ElkProtocol.cmdEffect(code, speed))
     }
 
+    override fun sendSpeed(speed: Int) {
+        write(ElkProtocol.cmdSpeed(speed))
+    }
+
+    override fun sendColorTemp(warm: Int, cold: Int) {
+        write(ElkProtocol.cmdColorTemp(warm, cold))
+    }
+
     override fun sendRaw(command: ByteArray) {
         write(command)
     }

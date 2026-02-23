@@ -56,6 +56,7 @@ fun DashboardScreen(
     var calibrationEnabled by remember { mutableStateOf(calibration.enabled) }
     var selectedEffect by remember { mutableStateOf("") }
     var effectSpeed by remember { mutableFloatStateOf(3f) }
+    var colorTempWarm by remember { mutableFloatStateOf(50f) }
 
     // Overflow menu and dialog state (bridge mode)
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -286,6 +287,31 @@ fun DashboardScreen(
                 Spacer(Modifier.width(4.dp))
                 Text("${brightness.toInt()}%", color = Color.White, style = MaterialTheme.typography.labelMedium)
             }
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("W", color = Color(0xFFFFB74D), style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(18.dp))
+                Slider(
+                    value = colorTempWarm,
+                    onValueChange = { colorTempWarm = it },
+                    onValueChangeFinished = {
+                        val warm = colorTempWarm.toInt()
+                        val cold = 100 - warm
+                        patternEngine.stop()
+                        selectedEffect = ""
+                        deviceControl.sendColorTemp(warm, cold)
+                    },
+                    valueRange = 0f..100f,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color(0xFFFFE0B2),
+                        activeTrackColor = Color(0xFFFFB74D),
+                        inactiveTrackColor = Color(0xFF90CAF9)
+                    )
+                )
+                Text("C", color = Color(0xFF90CAF9), style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.width(18.dp))
+            }
         }
 
         // --- Effects ---
@@ -295,14 +321,14 @@ fun DashboardScreen(
                 effectSpeed = effectSpeed,
                 onEffectSelected = { name ->
                     selectedEffect = name
+                    patternEngine.stop()
                     val code = ElkProtocol.EFFECTS[name] ?: return@EffectsSection
                     deviceControl.sendEffect(code, effectSpeed.toInt())
                 },
                 onSpeedChange = { speed ->
                     effectSpeed = speed
                     if (selectedEffect.isNotEmpty()) {
-                        val code = ElkProtocol.EFFECTS[selectedEffect] ?: return@EffectsSection
-                        deviceControl.sendEffect(code, speed.toInt())
+                        deviceControl.sendSpeed(speed.toInt())
                     }
                 }
             )
@@ -315,6 +341,7 @@ fun DashboardScreen(
                 playbackState = playbackState,
                 initialPreset = sessionState.lastPreset,
                 onPlay = { steps, loop, presetName ->
+                    selectedEffect = ""
                     patternEngine.play(steps, loop)
                     sessionState.lastPreset = presetName
                     sessionState.lastLoop = loop

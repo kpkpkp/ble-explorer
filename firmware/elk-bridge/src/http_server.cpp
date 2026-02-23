@@ -61,6 +61,26 @@ void HttpServer::begin() {
         }
     });
 
+    _server.on("/api/speed", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        handleSpeed(req);
+    }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (index == 0) req->_tempObject = malloc(total + 1);
+        if (req->_tempObject) {
+            memcpy((uint8_t*)req->_tempObject + index, data, len);
+            if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
+        }
+    });
+
+    _server.on("/api/colortemp", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        handleColorTemp(req);
+    }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (index == 0) req->_tempObject = malloc(total + 1);
+        if (req->_tempObject) {
+            memcpy((uint8_t*)req->_tempObject + index, data, len);
+            if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
+        }
+    });
+
     _server.on("/api/raw", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleRaw(req);
     }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
@@ -301,6 +321,30 @@ void HttpServer::handleEffect(AsyncWebServerRequest* req) {
     JsonObject obj = doc.as<JsonObject>();
     const char* target = CommandDispatcher::parseTarget(obj);
     if (_dispatcher.handleEffect(obj, target)) {
+        sendOk(req);
+    } else {
+        sendError(req, 400, _dispatcher.lastError.c_str());
+    }
+}
+
+void HttpServer::handleSpeed(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    if (!parseBody(req, doc)) return;
+    JsonObject obj = doc.as<JsonObject>();
+    const char* target = CommandDispatcher::parseTarget(obj);
+    if (_dispatcher.handleSpeed(obj, target)) {
+        sendOk(req);
+    } else {
+        sendError(req, 400, _dispatcher.lastError.c_str());
+    }
+}
+
+void HttpServer::handleColorTemp(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    if (!parseBody(req, doc)) return;
+    JsonObject obj = doc.as<JsonObject>();
+    const char* target = CommandDispatcher::parseTarget(obj);
+    if (_dispatcher.handleColorTemp(obj, target)) {
         sendOk(req);
     } else {
         sendError(req, 400, _dispatcher.lastError.c_str());

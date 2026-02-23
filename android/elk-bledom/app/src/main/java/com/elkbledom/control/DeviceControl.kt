@@ -63,6 +63,8 @@ interface DeviceControl {
     fun sendBrightness(level: Int)
     fun sendPower(on: Boolean)
     fun sendEffect(code: Int, speed: Int)
+    fun sendSpeed(speed: Int)
+    fun sendColorTemp(warm: Int, cold: Int)
     fun sendRaw(command: ByteArray)
     suspend fun sendColorSuspend(r: Int, g: Int, b: Int)
     suspend fun sendBrightnessSuspend(level: Int)

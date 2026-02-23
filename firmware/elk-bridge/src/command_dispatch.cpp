@@ -104,6 +104,55 @@ bool CommandDispatcher::handleEffect(JsonObject doc, const char* target) {
     return ok;
 }
 
+bool CommandDispatcher::handleSpeed(JsonObject doc, const char* target) {
+    if (!doc["speed"].is<int>()) {
+        lastError = "Missing speed field";
+        return false;
+    }
+
+    int speed = doc["speed"].as<int>();
+    if (speed < 1) speed = 1;
+    if (speed > 255) speed = 255;
+
+    uint8_t cmd[9];
+    buildSpeedCmd((uint8_t)speed, cmd);
+    bool ok = _ble.write(cmd, target);
+
+    if (!ok) {
+        lastError = "BLE write failed";
+    }
+
+    Serial.printf("[Cmd] Speed: %d -> %s = %s\n", speed, target, ok ? "ok" : "fail");
+    return ok;
+}
+
+bool CommandDispatcher::handleColorTemp(JsonObject doc, const char* target) {
+    if (!doc["warm"].is<int>() || !doc["cold"].is<int>()) {
+        lastError = "Missing warm or cold fields";
+        return false;
+    }
+
+    int warm = doc["warm"].as<int>();
+    int cold = doc["cold"].as<int>();
+    if (warm < 0) warm = 0;
+    if (warm > 100) warm = 100;
+    if (cold < 0) cold = 0;
+    if (cold > 100) cold = 100;
+
+    _pattern.stop();
+
+    uint8_t cmd[9];
+    buildColorTempCmd((uint8_t)warm, (uint8_t)cold, cmd);
+    bool ok = _ble.write(cmd, target);
+
+    if (!ok) {
+        lastError = "BLE write failed";
+    }
+
+    Serial.printf("[Cmd] ColorTemp: warm=%d cold=%d -> %s = %s\n", warm, cold, target, ok ? "ok" : "fail");
+    return ok;
+}
+
 bool CommandDispatcher::handleRaw(JsonObject doc, const char* target) {
     if (!doc["hex"].is<const char*>()) {
         lastError = "Missing hex field";

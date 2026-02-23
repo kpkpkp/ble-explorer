@@ -206,6 +206,18 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
             .put("target", targetString()))
     }
 
+    override fun sendSpeed(speed: Int) {
+        post("/api/speed", JSONObject()
+            .put("speed", speed)
+            .put("target", targetString()))
+    }
+
+    override fun sendColorTemp(warm: Int, cold: Int) {
+        post("/api/colortemp", JSONObject()
+            .put("warm", warm).put("cold", cold)
+            .put("target", targetString()))
+    }
+
     override fun sendRaw(command: ByteArray) {
         val hex = command.joinToString("") { "%02X".format(it) }
         post("/api/raw", JSONObject()

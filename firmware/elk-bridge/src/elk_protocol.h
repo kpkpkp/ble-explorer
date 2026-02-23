@@ -56,7 +56,31 @@ static inline void buildEffectCmd(uint8_t code, uint8_t speed, uint8_t* out) {
     out[2] = 0x03;
     out[3] = code;
     out[4] = speed;
-    out[5] = 0x00;
+    out[5] = 0xFF;
+    out[6] = 0xFF;
+    out[7] = 0x00;
+    out[8] = FRAME_END;
+}
+
+static inline void buildSpeedCmd(uint8_t speed, uint8_t* out) {
+    out[0] = FRAME_START;
+    out[1] = 0x00;
+    out[2] = 0x02;
+    out[3] = speed;
+    out[4] = 0xFF;
+    out[5] = 0xFF;
+    out[6] = 0xFF;
+    out[7] = 0x00;
+    out[8] = FRAME_END;
+}
+
+static inline void buildColorTempCmd(uint8_t warm, uint8_t cold, uint8_t* out) {
+    out[0] = FRAME_START;
+    out[1] = 0x00;
+    out[2] = 0x05;
+    out[3] = 0x02;
+    out[4] = warm;
+    out[5] = cold;
     out[6] = 0x00;
     out[7] = 0x00;
     out[8] = FRAME_END;

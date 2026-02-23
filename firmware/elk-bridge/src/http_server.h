@@ -42,6 +42,8 @@ private:
     void handleBrightness(AsyncWebServerRequest* req);
     void handlePower(AsyncWebServerRequest* req);
     void handleEffect(AsyncWebServerRequest* req);
+    void handleSpeed(AsyncWebServerRequest* req);
+    void handleColorTemp(AsyncWebServerRequest* req);
     void handleRaw(AsyncWebServerRequest* req);
     void handlePattern(AsyncWebServerRequest* req);
     void handleStop(AsyncWebServerRequest* req);

@@ -105,6 +105,20 @@ void loop() {
                 prefs.putString(key.c_str(), addr.c_str());
                 Serial.printf("[NVS] Saved %s as %s\n", addr.c_str(), key.c_str());
             }
+
+            // Affirm strip state: power on so commands are accepted
+            uint8_t powerOnCmd[9];
+            buildPowerCmd(true, powerOnCmd);
+            bleManager.write(powerOnCmd, addr.c_str());
+            Serial.printf("[Boot] Sent power-on to %s\n", addr.c_str());
+
+            // Re-kick saved pattern if one was loaded but strips weren't connected yet
+            if (patternEngine.isPlaying()) {
+                Serial.println("[Boot] Pattern already playing, strip will receive on next tick");
+            } else {
+                // Try restoring saved pattern now that a strip is connected
+                patternEngine.loadFromNVS(bleManager);
+            }
         }
         bleManager.clearConnectResult();
 

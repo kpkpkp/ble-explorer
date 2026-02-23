@@ -14,6 +14,8 @@ public:
     bool handleBrightness(JsonObject doc, const char* target);
     bool handlePower(JsonObject doc, const char* target);
     bool handleEffect(JsonObject doc, const char* target);
+    bool handleSpeed(JsonObject doc, const char* target);
+    bool handleColorTemp(JsonObject doc, const char* target);
     bool handleRaw(JsonObject doc, const char* target);
     bool handlePattern(JsonObject doc, const char* target);
     bool handleStop(const char* target);
