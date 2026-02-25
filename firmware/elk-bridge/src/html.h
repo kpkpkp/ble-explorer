@@ -11,192 +11,355 @@ static const char HTML_DASHBOARD[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <title>ELK Bridge</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:16px;max-width:480px;margin:0 auto}
-h1{font-size:1.3em;color:#fff;margin-bottom:12px;text-align:center}
-h2{font-size:1em;color:#aaa;margin:16px 0 8px;border-bottom:1px solid #333;padding-bottom:4px}
-.card{background:#16213e;border-radius:8px;padding:12px;margin-bottom:12px}
-.status-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:0.85em}
-.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
-.dot-ok{background:#4caf50}.dot-warn{background:#ff9800}.dot-off{background:#666}
-.color-preview{width:100%;height:48px;border-radius:6px;margin:8px 0;border:1px solid #333}
-label{display:block;font-size:0.8em;color:#999;margin-top:8px}
-input[type=range]{width:100%;margin:4px 0;accent-color:#7c4dff}
-.val{float:right;font-size:0.8em;color:#7c4dff}
-.btn-row{display:flex;gap:8px;margin-top:8px}
-button{flex:1;padding:10px;border:none;border-radius:6px;font-size:0.9em;cursor:pointer;font-weight:600;transition:opacity 0.2s}
-button:active{opacity:0.7}
-.btn-on{background:#4caf50;color:#fff}
-.btn-off{background:#f44336;color:#fff}
-.btn-scan{background:#2196f3;color:#fff}
-.btn-stop{background:#ff9800;color:#fff}
-.device{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #222;font-size:0.85em}
-.device button{flex:none;padding:6px 12px;font-size:0.8em}
-.btn-connect{background:#4caf50;color:#fff}
-.btn-disconnect{background:#f44336;color:#fff}
-#log{font-family:monospace;font-size:0.75em;color:#666;margin-top:8px;max-height:80px;overflow-y:auto}
-select{width:100%;padding:8px;background:#0f3460;color:#e0e0e0;border:1px solid #333;border-radius:6px;font-size:0.85em;margin-top:4px}
+body{font-family:-apple-system,system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;max-width:480px;margin:0 auto}
+h1{font-size:1.2em;color:#fff;margin-bottom:10px;text-align:center}
+.c{background:#16213e;border-radius:8px;padding:10px;margin-bottom:10px}
+.c h2{font-size:.82em;color:#777;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.sr{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:.8em}
+.d{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle}
+.dok{background:#4caf50}.dwn{background:#ff9800}.dof{background:#555}
+.chip{display:inline-block;background:#0f3460;border-radius:12px;padding:2px 8px;font-size:.72em;margin:2px}
+.chip .d{width:6px;height:6px;margin-right:3px}
+label{display:block;font-size:.78em;color:#777;margin-top:6px}
+input[type=range]{width:100%;margin:3px 0;accent-color:#e94560;height:18px}
+.v{float:right;color:#e94560;font-size:.78em}
+.br{display:flex;gap:6px;flex-wrap:wrap}
+button{padding:8px 12px;border:none;border-radius:6px;font-size:.8em;cursor:pointer;font-weight:600;transition:opacity .15s}
+button:active{opacity:.7}
+.bon{background:#4caf50;color:#fff}
+.bof{background:#f44336;color:#fff}
+.bac{background:#e94560;color:#fff}
+.bsc{background:#2196f3;color:#fff}
+.bst{background:#ff9800;color:#fff}
+.bsm{background:#0f3460;color:#e0e0e0;border:1px solid #333}
+.tg{display:flex;gap:0}
+.tg button{flex:1;border-radius:0;background:#0f3460;color:#777;border:1px solid #333;padding:8px 4px;font-size:.78em}
+.tg button:first-child{border-radius:6px 0 0 6px}
+.tg button:last-child{border-radius:0 6px 6px 0}
+.tg button.act{background:#e94560;color:#fff;border-color:#e94560}
+select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid #333;border-radius:6px;font-size:.8em}
+.sw{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-bottom:8px}
+.sw div{aspect-ratio:1;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:border-color .12s}
+.sw div:hover{border-color:rgba(255,255,255,.5)}
+.sw div.sel{border-color:#e94560}
+.cp{height:36px;border-radius:6px;margin:6px 0;border:1px solid #333}
+.hx{display:flex;gap:6px;align-items:center;margin-top:4px}
+.hx input{flex:1;padding:6px;background:#0f3460;color:#e0e0e0;border:1px solid #333;border-radius:6px;font-size:.8em;font-family:monospace}
+.dev{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #222;font-size:.8em}
+.dev button{flex:none;padding:4px 10px;font-size:.75em}
+.pr{display:flex;gap:6px;align-items:center;margin-top:4px}
+.pr select{flex:1}
+.pr button{flex:none}
+.pi{font-size:.72em;color:#666;margin-top:4px}
+.er{display:flex;gap:6px;align-items:center}
+.er select{flex:1}
+.er button{flex:none}
 </style>
 </head>
 <body>
 <h1>ELK Bridge</h1>
 
-<div class="card" id="statusCard">
-<div class="status-row"><span><span class="status-dot dot-off" id="wifiDot"></span>WiFi: <span id="wifiStatus">--</span></span><span id="wifiIP"></span></div>
-<div class="status-row"><span><span class="status-dot dot-off" id="bleDot"></span>BLE: <span id="bleStatus">--</span></span><span id="bleCount"></span></div>
-<div class="status-row"><span>Playback: <span id="playback">idle</span></span><span id="fwVersion"></span></div>
+<div class="c">
+<div class="sr"><span><span class="d dof" id="wD"></span>WiFi: <span id="wS">--</span></span><span id="wIP"></span></div>
+<div class="sr"><span id="sC"></span><span id="fV"></span></div>
+<div class="sr"><span>Uptime: <span id="ut">--</span></span><span id="hp"></span></div>
 </div>
 
-<div class="card">
-<h2>Target</h2>
-<select id="target"><option value="all">All strips</option></select>
+<div class="c">
+<div class="tg" id="tg">
+<button class="act" onclick="tgt('all')">ALL</button>
+<button onclick="tgt('strip1')">STRIP 1</button>
+<button onclick="tgt('strip2')">STRIP 2</button>
+</div>
+<div class="br" style="margin-top:8px">
+<button class="bon" style="flex:1" onclick="pw(true)">ON</button>
+<button class="bof" style="flex:1" onclick="pw(false)">OFF</button>
+</div>
 </div>
 
-<div class="card">
+<div class="c">
+<h2>Patterns</h2>
+<div class="pr">
+<select id="pSel"><option value="">-- Select Preset --</option></select>
+<button class="bac" onclick="playP()">&#9654;</button>
+<button class="bst" onclick="stopP()">&#9632;</button>
+</div>
+<div class="pr">
+<label style="margin:0;cursor:pointer"><input type="checkbox" id="lpCb" checked> Loop</label>
+<span class="pi" id="pSt"></span>
+</div>
+</div>
+
+<div class="c">
 <h2>Color</h2>
-<div class="color-preview" id="colorPreview"></div>
-<label>R <span class="val" id="rVal">128</span></label>
-<input type="range" id="rSlider" min="0" max="255" value="128">
-<label>G <span class="val" id="gVal">0</span></label>
-<input type="range" id="gSlider" min="0" max="255" value="0">
-<label>B <span class="val" id="bVal">255</span></label>
-<input type="range" id="bSlider" min="0" max="255" value="255">
+<div class="sw" id="sG"></div>
+<div class="cp" id="cP"></div>
+<div class="hx"><span style="color:#777">#</span><input type="text" id="hI" maxlength="6" placeholder="FF00FF"><button class="bsm" onclick="aHex()">Set</button></div>
+<label>R <span class="v" id="rV">0</span></label>
+<input type="range" id="rS" min="0" max="255" value="0">
+<label>G <span class="v" id="gV">0</span></label>
+<input type="range" id="gS" min="0" max="255" value="0">
+<label>B <span class="v" id="bV">0</span></label>
+<input type="range" id="bS" min="0" max="255" value="0">
+<label>Brightness <span class="v" id="brV">100</span>%</label>
+<input type="range" id="brS" min="0" max="100" value="100">
 </div>
 
-<div class="card">
-<h2>Brightness</h2>
-<label>Level <span class="val" id="brVal">100</span>%</label>
-<input type="range" id="brSlider" min="0" max="100" value="100">
+<div class="c">
+<h2>Effects</h2>
+<div class="er">
+<select id="fxS"></select>
+<button class="bac" onclick="sendFx()">&#9654;</button>
+</div>
+<label>Speed <span class="v" id="spV">3</span></label>
+<input type="range" id="spS" min="1" max="10" value="3">
 </div>
 
-<div class="card">
-<h2>Power</h2>
-<div class="btn-row">
-<button class="btn-on" onclick="sendPower(true)">ON</button>
-<button class="btn-off" onclick="sendPower(false)">OFF</button>
-<button class="btn-stop" onclick="sendStop()">STOP</button>
-</div>
-</div>
-
-<div class="card">
+<div class="c">
 <h2>Devices</h2>
-<div id="deviceList"></div>
-<div class="btn-row" style="margin-top:8px">
-<button class="btn-scan" onclick="doScan()">Scan for ELK-BLEDOM</button>
+<div id="dL"></div>
+<div class="br" style="margin-top:8px">
+<button class="bsc" style="flex:1" id="scBtn" onclick="doScan()">Scan for Devices</button>
 </div>
-<div id="scanResults" style="margin-top:8px"></div>
+<div id="scR"></div>
 </div>
-
-<div id="log"></div>
 
 <script>
-const API='';
-let sendTimer=null;
+var SW=['FF0000','FF7F00','FFFF00','7FFF00','00FF00','00FF7F','00FFFF','007FFF',
+'0000FF','7F00FF','FF00FF','FF007F','FFFFFF','CCCCCC','888888','000000'];
 
-function log(m){const d=document.getElementById('log');d.textContent=m+'\n'+d.textContent;d.textContent=d.textContent.slice(0,500)}
+var FX=[['Static',128],['Jump RGB',129],['Jump RGBYCMW',130],['Crossfade RGB',131],
+['Crossfade RGBYCMW',132],['Breathe RGB',133],['Breathe RGBYCMW',134],['Rainbow Fade',135],
+['Rainbow Pulse',136],['Rainbow Strobe',137],['Color Cycle',138],['RGB Chase',139],
+['Rainbow Chase',140],['Red Pulse',141],['Green Pulse',142],['Blue Pulse',143],
+['Yellow Pulse',144],['Cyan Pulse',145],['Magenta Pulse',146],['White Pulse',147],
+['RG Chase',148],['RB Chase',149],['GB Chase',150],['RG Breathe',151],
+['RB Breathe',152],['GB Breathe',153],['RGB Breathe Chase',154]];
 
-function post(path,body){
- return fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-  .then(r=>r.json()).then(j=>{if(!j.ok)log('ERR: '+j.error);return j}).catch(e=>log('ERR: '+e))
+var P={
+"St. Patrick's Day":['165B33','F8B229','FFFFFF'],
+"Valentine's Day":['B31942','FF69B4','FFFFFF'],
+"American Flag":['B31942','FFFFFF','0A3161'],
+"Utah State":['071D49','FFFFFF','AA0200','FFB81D'],
+"South Jordan":['005E2C','1A5276','FFFFFF','B87333'],
+"4th of July":['C41F40','FFFFFF','1E2D60'],
+"Pioneer Day":['071D49','FFFFFF','AA0200','FFB81D','8B5E3C','F5E6C8'],
+"Christmas":['C30F16','165B33','F8B229','FFFFFF'],
+"Halloween":['FF9A00','F75F1C','000000','881EE4','85E21F'],
+"Mardi Gras":['880085','FFD700','00A651'],
+"Pride Rainbow":['E40303','FF8C00','FFED00','008026','004DFF','750787']};
+
+var S={tgt:'all',r:0,g:0,b:0,br:100,fx:135,spd:3,lp:true,play:false,
+pn:'',strips:[],wifi:{},fw:'',up:0,hp:0,pStep:0,pTot:0,
+_dR:0,_dG:0,_dB:0,_dBr:0,_dSp:0};
+
+var $=function(id){return document.getElementById(id)};
+
+function post(p,b){return fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json()}).catch(function(){})}
+function get(p){return fetch(p).then(function(r){return r.json()}).catch(function(){})}
+
+function h2r(h){return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]}
+function r2h(r,g,b){return[r,g,b].map(function(v){return v.toString(16).padStart(2,'0')}).join('').toUpperCase()}
+function fUp(s){var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+'h '+m+'m'}
+
+// Build swatch grid
+(function(){var g=$('sG');SW.forEach(function(c){var d=document.createElement('div');d.style.background='#'+c;d.dataset.c=c;d.onclick=function(){swC(c)};g.appendChild(d)})})();
+
+// Build effect dropdown
+(function(){var s=$('fxS');FX.forEach(function(e){var o=document.createElement('option');o.value=e[1];o.textContent=e[0];s.appendChild(o)})})();
+
+// Build preset dropdown
+(function(){var s=$('pSel');Object.keys(P).forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o)})})();
+
+function tgt(t){
+S.tgt=t;
+var btns=$('tg').children;
+var idx=t==='all'?0:t==='strip1'?1:2;
+for(var i=0;i<btns.length;i++)btns[i].classList.toggle('act',i===idx);
+var st=rStrip();
+if(st){S.r=st.r;S.g=st.g;S.b=st.b;S.br=st.brightness;syncUI()}
 }
 
-function get(path){
- return fetch(API+path).then(r=>r.json()).catch(e=>log('ERR: '+e))
+function rStrip(){
+if(!S.strips.length)return null;
+if(S.tgt==='strip2'&&S.strips.length>1)return S.strips[1];
+return S.strips[0];
 }
 
-function getTarget(){return document.getElementById('target').value}
+function pw(on){post('/api/power',{on:on,target:S.tgt})}
+function stopP(){post('/api/stop',{target:S.tgt})}
 
-function updatePreview(){
- const r=document.getElementById('rSlider').value;
- const g=document.getElementById('gSlider').value;
- const b=document.getElementById('bSlider').value;
- document.getElementById('colorPreview').style.background='rgb('+r+','+g+','+b+')';
- document.getElementById('rVal').textContent=r;
- document.getElementById('gVal').textContent=g;
- document.getElementById('bVal').textContent=b;
+function swC(c){
+var rgb=h2r(c);S.r=rgb[0];S.g=rgb[1];S.b=rgb[2];
+syncUI();
+post('/api/color',{r:S.r,g:S.g,b:S.b,target:S.tgt});
 }
 
-function sendColorDebounced(){
- clearTimeout(sendTimer);
- sendTimer=setTimeout(()=>{
-  const r=+document.getElementById('rSlider').value;
-  const g=+document.getElementById('gSlider').value;
-  const b=+document.getElementById('bSlider').value;
-  post('/api/color',{r,g,b,target:getTarget()});
- },150);
+function aHex(){
+var v=$('hI').value.replace('#','');
+if(v.length!==6)return;
+var rgb=h2r(v);S.r=rgb[0];S.g=rgb[1];S.b=rgb[2];
+syncUI();
+post('/api/color',{r:S.r,g:S.g,b:S.b,target:S.tgt});
 }
 
-document.getElementById('rSlider').addEventListener('input',()=>{updatePreview();sendColorDebounced()});
-document.getElementById('gSlider').addEventListener('input',()=>{updatePreview();sendColorDebounced()});
-document.getElementById('bSlider').addEventListener('input',()=>{updatePreview();sendColorDebounced()});
+$('hI').addEventListener('keydown',function(e){if(e.key==='Enter')aHex()});
 
-let brTimer=null;
-document.getElementById('brSlider').addEventListener('input',function(){
- document.getElementById('brVal').textContent=this.value;
- clearTimeout(brTimer);
- brTimer=setTimeout(()=>{post('/api/brightness',{level:+this.value,target:getTarget()})},150);
+function sendFx(){
+post('/api/effect',{code:+$('fxS').value,speed:+$('spS').value,target:S.tgt});
+}
+
+function playP(){
+var name=$('pSel').value;
+if(!name||!P[name])return;
+var steps=P[name].map(function(h){var rgb=h2r(h);return{r:rgb[0],g:rgb[1],b:rgb[2],brightness:100,duration:2000,transition:'cut',fadeTime:500}});
+var loop=$('lpCb').checked;
+post('/api/pattern',{steps:steps,loop:loop,target:S.tgt,name:name});
+}
+
+// Slider setup with interaction gating
+function sSlider(id,vId,dk,cb){
+var sl=$(id);
+sl.addEventListener('input',function(){S[dk]=1;$(vId).textContent=sl.value;cb(+sl.value)});
+sl.addEventListener('change',function(){cb(+sl.value);setTimeout(function(){S[dk]=0},200)});
+}
+
+var cTm=null;
+function sCD(){
+clearTimeout(cTm);
+cTm=setTimeout(function(){post('/api/color',{r:S.r,g:S.g,b:S.b,target:S.tgt})},150);
+}
+
+sSlider('rS','rV','_dR',function(v){S.r=v;uPrev();sCD()});
+sSlider('gS','gV','_dG',function(v){S.g=v;uPrev();sCD()});
+sSlider('bS','bV','_dB',function(v){S.b=v;uPrev();sCD()});
+
+var bTm=null;
+sSlider('brS','brV','_dBr',function(v){
+S.br=v;clearTimeout(bTm);
+bTm=setTimeout(function(){post('/api/brightness',{level:v,target:S.tgt})},150);
 });
 
-function sendPower(on){post('/api/power',{on,target:getTarget()})}
-function sendStop(){post('/api/stop',{target:getTarget()})}
+var sTm=null;
+sSlider('spS','spV','_dSp',function(v){
+S.spd=v;clearTimeout(sTm);
+sTm=setTimeout(function(){post('/api/speed',{speed:v,target:S.tgt})},150);
+});
 
+function uPrev(){
+$('cP').style.background='rgb('+S.r+','+S.g+','+S.b+')';
+$('hI').value=r2h(S.r,S.g,S.b);
+var hex=r2h(S.r,S.g,S.b);
+var els=$('sG').children;
+for(var i=0;i<els.length;i++)els[i].classList.toggle('sel',els[i].dataset.c===hex);
+}
+
+function syncUI(){
+var w=S.wifi;
+$('wD').className='d '+(w.state==='CONNECTED'?'dok':w.state==='AP_MODE'?'dwn':'dof');
+$('wS').textContent=w.state||'--';
+$('wIP').textContent=w.ip||'';
+$('fV').textContent='v'+(S.fw||'?');
+$('ut').textContent=fUp(S.up);
+$('hp').textContent=S.hp?Math.round(S.hp/1024)+'KB':'';
+
+var ch='';
+S.strips.forEach(function(s,i){
+var ok=s.state==='ready';
+var nm=s.name||('Strip '+(i+1));
+ch+='<span class="chip"><span class="d '+(ok?'dok':'dof')+'"></span>'+nm+' '+s.rssi+'dBm</span>';
+});
+$('sC').innerHTML=ch;
+
+if(!S._dR){$('rS').value=S.r;$('rV').textContent=S.r}
+if(!S._dG){$('gS').value=S.g;$('gV').textContent=S.g}
+if(!S._dB){$('bS').value=S.b;$('bV').textContent=S.b}
+if(!S._dBr){$('brS').value=S.br;$('brV').textContent=S.br}
+if(!S._dSp){$('spS').value=S.spd;$('spV').textContent=S.spd}
+
+uPrev();
+
+var ps=S.play?'Step '+(S.pStep+1)+'/'+S.pTot+(S.pn?' \u2014 '+S.pn:''):'Idle';
+$('pSt').textContent=ps;
+if(S.pn)$('pSel').value=S.pn;
+$('lpCb').checked=S.lp;
+
+var st=rStrip();
+if(st&&st.mode==='effect'&&!S._dSp){
+$('fxS').value=st.effectCode;
+}
+
+var dl=$('dL');
+if(S.strips.length){
+dl.innerHTML=S.strips.map(function(s,i){
+var nm=s.name||('Strip '+(i+1));
+var pw=s.power?'':'<span style="color:#f44336"> OFF</span>';
+return '<div class="dev"><span>'+nm+': '+s.address+' ['+s.state+']'+pw+'</span>'+
+'<button class="bof" onclick="doDis(\''+s.address+'\')">&#10005;</button></div>';
+}).join('');
+}else{
+dl.innerHTML='<div style="color:#555;font-size:.78em">No strips connected</div>';
+}
+}
+
+function poll(){
+get('/status').then(function(j){
+if(!j||!j.data)return;
+var d=j.data;
+S.wifi=d.wifi;
+S.strips=d.ble.strips||[];
+S.fw=d.firmware;
+S.up=d.uptime;
+S.hp=d.freeHeap;
+S.play=d.pattern.playing;
+S.pn=d.pattern.presetName||'';
+S.lp=d.pattern.loop;
+S.pStep=d.pattern.currentStep;
+S.pTot=d.pattern.totalSteps;
+
+var st=rStrip();
+if(st){
+if(!S._dR&&!S._dG&&!S._dB){S.r=st.r;S.g=st.g;S.b=st.b}
+if(!S._dBr)S.br=st.brightness;
+if(st.mode==='effect'){
+S.fx=st.effectCode;
+if(!S._dSp)S.spd=st.effectSpeed;
+}
+}
+syncUI();
+});
+}
+
+var scPoll=null;
 function doScan(){
- document.getElementById('scanResults').innerHTML='<div style="color:#999;font-size:0.85em">Scanning...</div>';
- get('/api/scan').then(j=>{
-  if(!j||!j.data)return;
-  const el=document.getElementById('scanResults');
-  if(j.data.devices.length===0){el.innerHTML='<div style="color:#999;font-size:0.85em">No devices found</div>';return}
-  el.innerHTML=j.data.devices.map(d=>
-   '<div class="device"><span>'+d.name+' ('+d.rssi+'dBm)</span>'+
-   '<button class="btn-connect" onclick="doConnect(\''+d.address+'\')">Connect</button></div>'
-  ).join('');
- });
+$('scR').innerHTML='<div style="color:#888;font-size:.78em;padding:6px">Scanning\u2026</div>';
+$('scBtn').disabled=true;
+get('/api/scan').then(pScan);
+}
+function pScan(j){
+if(!j||!j.data)return;
+if(j.data.scanning){
+scPoll=setTimeout(function(){get('/api/scan').then(pScan)},1000);
+return;
+}
+clearTimeout(scPoll);
+$('scBtn').disabled=false;
+var devs=j.data.devices||[];
+if(!devs.length){
+$('scR').innerHTML='<div style="color:#888;font-size:.78em;padding:6px">No devices found</div>';
+return;
+}
+$('scR').innerHTML=devs.map(function(d){
+return '<div class="dev"><span>'+d.name+' ('+d.rssi+'dBm)</span>'+
+'<button class="bon" onclick="doCon(\''+d.address+'\')">Connect</button></div>';
+}).join('');
 }
 
-function doConnect(addr){post('/api/connect',{address:addr}).then(()=>refreshStatus())}
-function doDisconnect(addr){post('/api/disconnect',{address:addr}).then(()=>refreshStatus())}
+function doCon(a){post('/api/connect',{address:a})}
+function doDis(a){post('/api/disconnect',{address:a})}
 
-function refreshStatus(){
- get('/status').then(j=>{
-  if(!j||!j.data)return;
-  const d=j.data;
-  const wDot=document.getElementById('wifiDot');
-  const bDot=document.getElementById('bleDot');
-  document.getElementById('wifiStatus').textContent=d.wifi.state;
-  document.getElementById('wifiIP').textContent=d.wifi.ip||'';
-  wDot.className='status-dot '+(d.wifi.state==='CONNECTED'?'dot-ok':d.wifi.state==='AP_MODE'?'dot-warn':'dot-off');
-  document.getElementById('bleCount').textContent=d.ble.connected+'/'+d.ble.total+' strips';
-  bDot.className='status-dot '+(d.ble.connected>0?'dot-ok':'dot-off');
-  document.getElementById('bleStatus').textContent=d.ble.connected>0?'Connected':'Disconnected';
-  document.getElementById('playback').textContent=d.pattern.state;
-  document.getElementById('fwVersion').textContent='v'+d.firmware;
-
-  // Update target dropdown
-  const sel=document.getElementById('target');
-  const cur=sel.value;
-  sel.innerHTML='<option value="all">All strips</option>';
-  if(d.ble.strips){
-   d.ble.strips.forEach((s,i)=>{
-    sel.innerHTML+='<option value="strip'+(i+1)+'">Strip '+(i+1)+' ('+s.address+')</option>';
-   });
-  }
-  sel.value=cur;
-
-  // Update device list
-  const dl=document.getElementById('deviceList');
-  if(d.ble.strips&&d.ble.strips.length>0){
-   dl.innerHTML=d.ble.strips.map((s,i)=>
-    '<div class="device"><span>Strip '+(i+1)+': '+s.address+' ['+s.state+']</span>'+
-    '<button class="btn-disconnect" onclick="doDisconnect(\''+s.address+'\')">Disconnect</button></div>'
-   ).join('');
-  }else{
-   dl.innerHTML='<div style="color:#666;font-size:0.85em">No strips connected</div>';
-  }
- });
-}
-
-updatePreview();
-refreshStatus();
-setInterval(refreshStatus,5000);
+poll();
+setInterval(poll,1000);
 </script>
 </body>
 </html>)rawliteral";
