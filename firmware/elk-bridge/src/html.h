@@ -49,11 +49,11 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 .dev button{flex:none;padding:4px 10px;font-size:.75em}
 .pr{display:flex;gap:6px;align-items:center;margin-top:4px}
 .pr select{flex:1}
-.pr button{flex:none}
+.pr button{flex:none;min-width:44px;min-height:38px;font-size:1.1em}
 .pi{font-size:.72em;color:#666;margin-top:4px}
 .er{display:flex;gap:6px;align-items:center}
 .er select{flex:1}
-.er button{flex:none}
+.er button{flex:none;min-width:44px;min-height:38px;font-size:1.1em}
 </style>
 </head>
 <body>
@@ -151,7 +151,7 @@ var P={
 
 var S={tgt:'all',r:0,g:0,b:0,br:100,fx:135,spd:3,lp:true,play:false,
 pn:'',strips:[],wifi:{},fw:'',up:0,hp:0,pStep:0,pTot:0,
-_dR:0,_dG:0,_dB:0,_dBr:0,_dSp:0};
+_dR:0,_dG:0,_dB:0,_dBr:0,_dSp:0,_dPr:0,_dFx:0,_dLp:0};
 
 var $=function(id){return document.getElementById(id)};
 
@@ -170,6 +170,12 @@ function fUp(s){var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+'h '+m
 
 // Build preset dropdown
 (function(){var s=$('pSel');Object.keys(P).forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o)})})();
+
+// Dropdown interaction gating — prevent poll from overwriting user selection
+$('pSel').addEventListener('focus',function(){S._dPr=1});
+$('pSel').addEventListener('change',function(){S._dPr=1});
+$('fxS').addEventListener('focus',function(){S._dFx=1});
+$('fxS').addEventListener('change',function(){S._dFx=1});
 
 function tgt(t){
 S.tgt=t;
@@ -204,14 +210,17 @@ post('/api/color',{r:S.r,g:S.g,b:S.b,target:S.tgt});
 }
 
 $('hI').addEventListener('keydown',function(e){if(e.key==='Enter')aHex()});
+$('lpCb').addEventListener('change',function(){S._dLp=1});
 
 function sendFx(){
+S._dFx=0;
 post('/api/effect',{code:+$('fxS').value,speed:+$('spS').value,target:S.tgt});
 }
 
 function playP(){
 var name=$('pSel').value;
 if(!name||!P[name])return;
+S._dPr=0;S._dLp=0;
 var steps=P[name].map(function(h){var rgb=h2r(h);return{r:rgb[0],g:rgb[1],b:rgb[2],brightness:100,duration:2000,transition:'cut',fadeTime:500}});
 var loop=$('lpCb').checked;
 post('/api/pattern',{steps:steps,loop:loop,target:S.tgt,name:name});
@@ -281,11 +290,11 @@ uPrev();
 
 var ps=S.play?'Step '+(S.pStep+1)+'/'+S.pTot+(S.pn?' \u2014 '+S.pn:''):'Idle';
 $('pSt').textContent=ps;
-if(S.pn)$('pSel').value=S.pn;
-$('lpCb').checked=S.lp;
+if(S.pn&&!S._dPr)$('pSel').value=S.pn;
+if(!S._dLp)$('lpCb').checked=S.lp;
 
 var st=rStrip();
-if(st&&st.mode==='effect'&&!S._dSp){
+if(st&&st.mode==='effect'&&!S._dSp&&!S._dFx){
 $('fxS').value=st.effectCode;
 }
 
