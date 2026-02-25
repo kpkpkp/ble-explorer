@@ -85,6 +85,8 @@ class BleManager(context: Context) : DeviceControl {
     override val bridgeStatus: StateFlow<BridgeStatus?> = _bridgeStatus.asStateFlow()
 
     override val stripRssi: StateFlow<Map<String, Int>> = MutableStateFlow(emptyMap())
+    override val stripNames: StateFlow<Map<String, String>> = MutableStateFlow(emptyMap())
+    override val stripDeviceStates: StateFlow<Map<String, com.elkbledom.control.StripDeviceState>> = MutableStateFlow(emptyMap())
 
     // --- Internal connection bookkeeping ---
 
@@ -373,7 +375,8 @@ class BleManager(context: Context) : DeviceControl {
     // DeviceControl command interface
     // -----------------------------------------------------------------------
 
-    override fun sendColor(r: Int, g: Int, b: Int) {
+    override fun sendColor(r: Int, g: Int, b: Int, intentR: Int, intentG: Int, intentB: Int) {
+        // BLE mode ignores intent params — no state reporting needed
         write(ElkProtocol.cmdColor(r, g, b))
     }
 
@@ -410,7 +413,7 @@ class BleManager(context: Context) : DeviceControl {
     }
 
     /** No-op in BLE mode -- pattern playback is handled locally by PatternEngine. */
-    override fun sendPattern(steps: List<PatternStepData>, loop: Boolean) {
+    override fun sendPattern(steps: List<PatternStepData>, loop: Boolean, name: String) {
         // No-op: BLE mode uses local PatternEngine
     }
 

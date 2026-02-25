@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <functional>
 #include "ble_manager.h"
 #include "pattern_engine.h"
 
@@ -28,6 +29,7 @@ private:
     BleManager&    _ble;
     PatternEngine& _pattern;
 
+    void updateStrips(const char* target, std::function<void(BleStrip*)> fn);
     uint8_t hexCharToNibble(char c);
     bool parseHexString(const char* hex, uint8_t* out, size_t expectedLen);
 };

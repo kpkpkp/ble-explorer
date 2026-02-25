@@ -43,11 +43,14 @@ class PatternEngine(
     // Cache for bridge restart re-send
     private var _lastPattern: List<PatternStep>? = null
     private var _lastLoop: Boolean = false
+    private var _lastPresetName: String = ""
+    private var _bridgeSyncJob: Job? = null
 
-    fun play(pattern: List<PatternStep>, loop: Boolean) {
+    fun play(pattern: List<PatternStep>, loop: Boolean, presetName: String = "") {
         stop()
         _lastPattern = pattern
         _lastLoop = loop
+        _lastPresetName = presetName
         _playbackState.value = PlaybackState(
             state = "playing",
             totalSteps = pattern.size,
@@ -67,7 +70,7 @@ class PatternEngine(
                     fadeTime = (step.fadeTime * 1000).toInt()
                 )
             }
-            deviceControl.sendPattern(stepsData, loop)
+            deviceControl.sendPattern(stepsData, loop, presetName)
             // Monitor bridge playback status
             playbackJob = scope.launch {
                 while (isActive) {
@@ -142,6 +145,47 @@ class PatternEngine(
                 deviceControl.sendBrightnessSuspend(br)
             }
             delay(33)
+        }
+    }
+
+    /**
+     * Start observing bridge playback state. If the bridge is already playing,
+     * reflect that in playbackState so the UI shows the correct state.
+     * Does NOT send any commands to the bridge.
+     */
+    fun syncFromBridge() {
+        if (deviceControl !is HttpBridgeClient) return
+        _bridgeSyncJob?.cancel()
+        _bridgeSyncJob = scope.launch {
+            // Wait for first status poll
+            var synced = false
+            while (isActive && !synced) {
+                val status = deviceControl.bridgeStatus.value
+                if (status != null) {
+                    if (status.playbackState != "idle") {
+                        _playbackState.value = PlaybackState(
+                            state = "playing",
+                            currentStep = status.playbackStep,
+                            totalSteps = status.playbackTotal,
+                            loop = status.playbackLoop
+                        )
+                        // Continue monitoring until stopped
+                        while (isActive) {
+                            delay(500)
+                            val s = deviceControl.bridgeStatus.value ?: break
+                            _playbackState.value = _playbackState.value.copy(
+                                state = if (s.playbackState == "idle") "stopped" else "playing",
+                                currentStep = s.playbackStep,
+                                totalSteps = s.playbackTotal,
+                                loop = s.playbackLoop
+                            )
+                            if (s.playbackState == "idle") break
+                        }
+                    }
+                    synced = true
+                }
+                delay(500)
+            }
         }
     }
 

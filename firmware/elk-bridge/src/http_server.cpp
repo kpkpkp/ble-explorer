@@ -259,6 +259,21 @@ void HttpServer::handleStatus(AsyncWebServerRequest* req) {
             stripObj["state"] = s->stateStr();
             stripObj["slot"] = "strip" + String(i + 1);
             stripObj["rssi"] = s->rssi;
+            String nameKey = "strip" + String(i + 1) + "_name";
+            String name = _prefs.getString(nameKey.c_str(), "");
+            if (name.length() > 0) {
+                stripObj["name"] = name;
+            }
+            // Per-strip tracked state
+            stripObj["r"] = s->lastR;
+            stripObj["g"] = s->lastG;
+            stripObj["b"] = s->lastB;
+            stripObj["brightness"] = s->lastBrightness;
+            stripObj["power"] = s->lastPower;
+            const char* modeStr = s->mode == 1 ? "effect" : (s->mode == 2 ? "pattern" : "color");
+            stripObj["mode"] = modeStr;
+            stripObj["effectCode"] = s->lastEffectCode;
+            stripObj["effectSpeed"] = s->lastEffectSpeed;
             if (s->state == BleStrip::READY) connected++;
         }
     }
@@ -271,6 +286,9 @@ void HttpServer::handleStatus(AsyncWebServerRequest* req) {
     pattern["playing"] = _pattern.isPlaying();
     pattern["currentStep"] = _pattern.getCurrentStep();
     pattern["totalSteps"] = _pattern.getTotalSteps();
+    pattern["loop"] = _pattern.getLoop();
+    pattern["presetName"] = _pattern.getPresetName();
+    pattern["target"] = _pattern.getTarget();
 
     // Firmware
     data["firmware"] = FIRMWARE_VERSION;
@@ -507,35 +525,55 @@ void HttpServer::handleConfig(AsyncWebServerRequest* req) {
     JsonDocument doc;
     if (!parseBody(req, doc)) return;
 
+    bool needsReboot = false;
     bool changed = false;
 
     if (doc["wifi_ssid"].is<const char*>()) {
         _prefs.putString("wifi_ssid", doc["wifi_ssid"].as<const char*>());
+        needsReboot = true;
         changed = true;
     }
     if (doc["wifi_pass"].is<const char*>()) {
         _prefs.putString("wifi_pass", doc["wifi_pass"].as<const char*>());
+        needsReboot = true;
         changed = true;
     }
     if (doc["strip1_addr"].is<const char*>()) {
         _prefs.putString("strip1_addr", doc["strip1_addr"].as<const char*>());
+        needsReboot = true;
         changed = true;
     }
     if (doc["strip2_addr"].is<const char*>()) {
         _prefs.putString("strip2_addr", doc["strip2_addr"].as<const char*>());
+        needsReboot = true;
         changed = true;
     }
 
-    if (changed) {
+    // Strip names don't require reboot
+    if (doc["strip1_name"].is<const char*>()) {
+        _prefs.putString("strip1_name", doc["strip1_name"].as<const char*>());
+        changed = true;
+    }
+    if (doc["strip2_name"].is<const char*>()) {
+        _prefs.putString("strip2_name", doc["strip2_name"].as<const char*>());
+        changed = true;
+    }
+
+    if (!changed) {
+        sendError(req, 400, "No config fields provided");
+        return;
+    }
+
+    if (needsReboot) {
         JsonDocument resp;
         resp["data"]["message"] = "Config saved. Rebooting in 2 seconds...";
         sendOk(req, resp);
-
-        // Schedule reboot
         delay(2000);
         ESP.restart();
     } else {
-        sendError(req, 400, "No config fields provided");
+        JsonDocument resp;
+        resp["data"]["message"] = "Config saved.";
+        sendOk(req, resp);
     }
 }
 

@@ -24,7 +24,7 @@ public:
     };
 
     void begin(Preferences& prefs);
-    void play(PatternStep* steps, uint8_t count, bool loop, const char* target = "all");
+    void play(PatternStep* steps, uint8_t count, bool loop, const char* target = "all", const char* presetName = "");
     void stop();
     void tick(BleManager& ble);
 
@@ -37,6 +37,8 @@ public:
     uint8_t getTotalSteps() const { return _stepCount; }
     State   getState() const { return _state; }
     const char* getTarget() const { return _target; }
+    const char* getPresetName() const { return _presetName; }
+    bool        getLoop() const { return _loop; }
 
     const char* stateStr() const {
         switch (_state) {
@@ -49,12 +51,14 @@ public:
 
 private:
     Preferences* _prefs = nullptr;
+    BleManager*  _ble = nullptr;  // for updating strip state during playback
     PatternStep _steps[PATTERN_MAX_STEPS];
     uint8_t     _stepCount = 0;
     uint8_t     _currentStep = 0;
     bool        _loop = false;
     State       _state = IDLE;
     char        _target[32] = "all";
+    char        _presetName[64] = "";
 
     uint32_t    _stepStartMs = 0;
     uint32_t    _fadeStartMs = 0;

@@ -32,6 +32,15 @@ struct BleStrip {
     uint32_t                    lastSeen = 0;
     int                         rssi     = 0; // last polled RSSI (dBm), 0 = unknown
 
+    // Tracked device state (updated by CommandDispatcher + PatternEngine)
+    uint8_t lastR = 0, lastG = 0, lastB = 0;   // user-intended (pre-calibration) color
+    uint8_t lastBrightness = 100;               // 0-100
+    bool    lastPower = true;
+    uint8_t lastEffectCode = 0;                 // 0=none, 0x80-0x9A=active
+    uint8_t lastEffectSpeed = 3;                // 1-10
+    uint8_t lastWarm = 0, lastCold = 0;         // color temp
+    uint8_t mode = 0;                           // 0=color, 1=effect, 2=pattern
+
     const char* stateStr() const {
         switch (state) {
             case DISCONNECTED: return "disconnected";

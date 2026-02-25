@@ -19,6 +19,7 @@ import com.elkbledom.SessionState
 import com.elkbledom.control.ConnectionState
 import com.elkbledom.control.DeviceControl
 import com.elkbledom.control.DiscoveredDevice
+import com.elkbledom.control.HttpBridgeClient
 import com.elkbledom.control.Target
 import com.elkbledom.ble.ElkProtocol
 import com.elkbledom.calibration.ColorCalibration
@@ -40,7 +41,8 @@ fun DashboardScreen(
     sessionState: SessionState,
     isBridgeMode: Boolean = false,
     onShowSettings: () -> Unit = {},
-    onStopService: () -> Unit = {}
+    onStopService: () -> Unit = {},
+    onCalibrate: () -> Unit = {}
 ) {
     val connectionStates by deviceControl.connectionStates.collectAsState()
     val discoveredDevices by deviceControl.discoveredDevices.collectAsState()
@@ -49,6 +51,8 @@ fun DashboardScreen(
     val playbackState by patternEngine.playbackState.collectAsState()
     val bridgeStatusVal by deviceControl.bridgeStatus.collectAsState()
     val stripRssiState by deviceControl.stripRssi.collectAsState()
+    val bridgeStripNames by deviceControl.stripNames.collectAsState()
+    val stripDeviceStates by deviceControl.stripDeviceStates.collectAsState()
 
     var red by remember { mutableIntStateOf(255) }
     var green by remember { mutableIntStateOf(255) }
@@ -59,6 +63,43 @@ fun DashboardScreen(
     var effectSpeed by remember { mutableFloatStateOf(3f) }
     var colorTempWarm by remember { mutableFloatStateOf(50f) }
     var showHelp by remember { mutableStateOf(false) }
+
+    // Interaction gating: don't overwrite sliders while user is dragging
+    var brightnessInteracting by remember { mutableStateOf(false) }
+    var colorTempInteracting by remember { mutableStateOf(false) }
+    var effectSpeedInteracting by remember { mutableStateOf(false) }
+
+    // Resolve active strip state based on target
+    val activeStripState = remember(stripDeviceStates, target, connectionStates) {
+        val addrs = connectionStates.keys.toList()
+        when (target) {
+            Target.ALL -> addrs.firstOrNull()?.let { stripDeviceStates[it] }
+            Target.STRIP1 -> addrs.getOrNull(0)?.let { stripDeviceStates[it] }
+            Target.STRIP2 -> addrs.getOrNull(1)?.let { stripDeviceStates[it] }
+        }
+    }
+
+    // Sync UI state from bridge (bridge mode only)
+    LaunchedEffect(activeStripState) {
+        if (isBridgeMode && activeStripState != null) {
+            // Always sync color (tap is instant, no dragging)
+            red = activeStripState.r
+            green = activeStripState.g
+            blue = activeStripState.b
+
+            // Sync sliders only when user is not actively dragging
+            if (!brightnessInteracting) brightness = activeStripState.brightness.toFloat()
+
+            // Sync effect selection
+            if (activeStripState.mode == "effect" && activeStripState.effectCode > 0) {
+                selectedEffect = ElkProtocol.EFFECTS.entries
+                    .find { it.value == activeStripState.effectCode }?.key ?: ""
+                if (!effectSpeedInteracting) effectSpeed = activeStripState.effectSpeed.toFloat()
+            } else if (activeStripState.mode != "effect") {
+                selectedEffect = ""
+            }
+        }
+    }
 
     // Overflow menu and dialog state (bridge mode)
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -131,10 +172,12 @@ fun DashboardScreen(
 
         // --- Strip status bar (bridge mode only) ---
         if (isBridgeMode) {
+            // Prefer bridge-reported names, fall back to local session names
+            val effectiveStripNames = if (bridgeStripNames.isNotEmpty()) bridgeStripNames else sessionState.stripNames
             StripStatusBar(
                 connectionStates = connectionStates,
                 stripRssi = stripRssiState,
-                stripNames = sessionState.stripNames,
+                stripNames = effectiveStripNames,
                 target = target,
                 deviceControl = deviceControl
             )
@@ -262,6 +305,36 @@ fun DashboardScreen(
         }
         if (showHelp) HelpText("ALL sends to both strips. STRIP1/STRIP2 targets one. ON/OFF controls power.")
 
+        // --- Patterns ---
+        // Use bridge's preset name if bridge is playing, otherwise local session
+        val bridgePresetName = bridgeStatusVal?.presetName ?: ""
+        val effectiveInitialPreset = if (isBridgeMode && bridgePresetName.isNotEmpty()) {
+            bridgePresetName
+        } else {
+            sessionState.lastPreset
+        }
+
+        SectionCard("Patterns") {
+            PatternEditor(
+                presetManager = presetManager,
+                playbackState = playbackState,
+                initialPreset = effectiveInitialPreset,
+                onPlay = { steps, loop, presetName ->
+                    selectedEffect = ""
+                    patternEngine.play(steps, loop, presetName)
+                    sessionState.lastPreset = presetName
+                    sessionState.lastLoop = loop
+                    sessionState.wasPlaying = true
+                    sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
+                },
+                onStop = {
+                    patternEngine.stop()
+                    sessionState.wasPlaying = false
+                }
+            )
+            if (showHelp) HelpText("Custom color sequences run on the bridge. Survives app disconnect and bridge reboot.")
+        }
+
         // --- Color + Brightness (merged) ---
         SectionCard("Color") {
             ColorPicker(
@@ -275,7 +348,7 @@ fun DashboardScreen(
                     } else {
                         Triple(r, g, b)
                     }
-                    deviceControl.sendColor(cr, cg, cb)
+                    deviceControl.sendColor(cr, cg, cb, intentR = r, intentG = g, intentB = b)
                 }
             )
             if (showHelp) HelpText("Tap swatch or drag sliders. Input = your color, Output = after calibration.")
@@ -284,8 +357,9 @@ fun DashboardScreen(
                 Icon(Icons.Default.BrightnessLow, null, tint = Color.Gray, modifier = Modifier.size(18.dp))
                 Slider(
                     value = brightness,
-                    onValueChange = { brightness = it },
+                    onValueChange = { brightnessInteracting = true; brightness = it },
                     onValueChangeFinished = {
+                        brightnessInteracting = false
                         deviceControl.sendBrightness(brightness.toInt())
                     },
                     valueRange = 0f..100f,
@@ -305,8 +379,9 @@ fun DashboardScreen(
                     modifier = Modifier.width(18.dp))
                 Slider(
                     value = colorTempWarm,
-                    onValueChange = { colorTempWarm = it },
+                    onValueChange = { colorTempInteracting = true; colorTempWarm = it },
                     onValueChangeFinished = {
+                        colorTempInteracting = false
                         val warm = colorTempWarm.toInt()
                         val cold = 100 - warm
                         patternEngine.stop()
@@ -339,39 +414,19 @@ fun DashboardScreen(
                     deviceControl.sendEffect(code, effectSpeed.toInt())
                 },
                 onSpeedChange = { speed ->
+                    effectSpeedInteracting = true
                     effectSpeed = speed
                     if (selectedEffect.isNotEmpty()) {
                         deviceControl.sendSpeed(speed.toInt())
                     }
-                }
+                },
+                onSpeedChangeFinished = { effectSpeedInteracting = false }
             )
             if (showHelp) HelpText("27 builtin effects run on the strip controller. Speed slider adjusts without restarting.")
         }
 
-        // --- Patterns ---
-        SectionCard("Patterns") {
-            PatternEditor(
-                presetManager = presetManager,
-                playbackState = playbackState,
-                initialPreset = sessionState.lastPreset,
-                onPlay = { steps, loop, presetName ->
-                    selectedEffect = ""
-                    patternEngine.play(steps, loop)
-                    sessionState.lastPreset = presetName
-                    sessionState.lastLoop = loop
-                    sessionState.wasPlaying = true
-                    sessionState.connectedAddresses = deviceControl.getConnectedAddresses()
-                },
-                onStop = {
-                    patternEngine.stop()
-                    sessionState.wasPlaying = false
-                }
-            )
-            if (showHelp) HelpText("Custom color sequences run on the bridge. Survives app disconnect and bridge reboot.")
-        }
-
-        // --- Calibration ---
-        SectionCard("Calibration") {
+        // --- Tools ---
+        SectionCard("Tools") {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -387,14 +442,46 @@ fun DashboardScreen(
                     )
                 )
             }
+            Text(
+                if (calibration.isCustom) "Custom calibration applied"
+                else "Using default calibration",
+                color = Color.Gray, style = MaterialTheme.typography.bodySmall
+            )
             if (calibrationEnabled) {
                 val (er, eg, eb) = calibration.apply(255, 0, 0)
                 Text(
-                    "Example: #FF0000 -> #${String.format("%02X%02X%02X", er, eg, eb)}",
+                    "Example: #FF0000 \u2192 #${String.format("%02X%02X%02X", er, eg, eb)}",
                     color = Color.Gray, style = MaterialTheme.typography.bodySmall
                 )
             }
-            if (showHelp) HelpText("Corrects color drift \u2014 maps your chosen color to what the strip actually shows.")
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onCalibrate,
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
+                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp)
+                ) {
+                    Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Calibrate\u2026", style = MaterialTheme.typography.labelMedium)
+                }
+                if (calibration.isCustom) {
+                    OutlinedButton(
+                        onClick = {
+                            calibration.reset()
+                            // Force recomposition by toggling state
+                            calibrationEnabled = calibration.enabled
+                        },
+                        modifier = Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)
+                    ) {
+                        Text("Reset to Defaults", style = MaterialTheme.typography.labelMedium,
+                            color = Color.Gray)
+                    }
+                }
+            }
+            if (showHelp) HelpText("Camera wizard calibrates strip colors using a mirror. Reset restores bundled defaults.")
         }
 
         Spacer(Modifier.height(16.dp))
@@ -423,6 +510,8 @@ fun DashboardScreen(
         BehaviorDialog(
             sessionState = sessionState,
             connectionStates = connectionStates,
+            deviceControl = deviceControl,
+            isBridgeMode = isBridgeMode,
             onDismiss = { showBehaviorDialog = false }
         )
     }
@@ -496,7 +585,8 @@ private fun EffectsSection(
     selectedEffect: String,
     effectSpeed: Float,
     onEffectSelected: (String) -> Unit,
-    onSpeedChange: (Float) -> Unit
+    onSpeedChange: (Float) -> Unit,
+    onSpeedChangeFinished: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
     val effectNames = ElkProtocol.EFFECTS.keys.toList()
@@ -533,6 +623,7 @@ private fun EffectsSection(
         Slider(
             value = effectSpeed,
             onValueChange = onSpeedChange,
+            onValueChangeFinished = onSpeedChangeFinished,
             valueRange = 1f..10f,
             steps = 8,
             modifier = Modifier.weight(1f),
@@ -766,14 +857,17 @@ private fun ScanDialog(
 private fun BehaviorDialog(
     sessionState: SessionState,
     connectionStates: Map<String, ConnectionState>,
+    deviceControl: DeviceControl,
+    isBridgeMode: Boolean,
     onDismiss: () -> Unit
 ) {
     var autoResume by remember { mutableStateOf(sessionState.autoResumePattern) }
     var powerOff by remember { mutableStateOf(sessionState.powerOffOnExit) }
 
+    val bridgeNames = if (isBridgeMode) deviceControl.stripNames.collectAsState().value else emptyMap()
     val addresses = connectionStates.keys.toList()
-    val savedNames = sessionState.stripNames
-    val nameStates = remember(addresses) {
+    val savedNames = if (bridgeNames.isNotEmpty()) bridgeNames else sessionState.stripNames
+    val nameStates = remember(addresses, savedNames) {
         addresses.mapIndexed { index, addr ->
             addr to mutableStateOf(savedNames[addr] ?: "Strip${index + 1}")
         }
@@ -785,6 +879,7 @@ private fun BehaviorDialog(
             val names = nameStates.associate { (addr, state) -> addr to state.value }
                 .filter { (_, v) -> v.isNotBlank() }
             sessionState.stripNames = names
+            if (isBridgeMode) (deviceControl as? HttpBridgeClient)?.saveStripNames(names)
             onDismiss()
         },
         containerColor = CardColor,
@@ -867,6 +962,7 @@ private fun BehaviorDialog(
                 val names = nameStates.associate { (addr, state) -> addr to state.value }
                     .filter { (_, v) -> v.isNotBlank() }
                 sessionState.stripNames = names
+                if (isBridgeMode) (deviceControl as? HttpBridgeClient)?.saveStripNames(names)
                 onDismiss()
             }) {
                 Text("Close", color = AccentColor)

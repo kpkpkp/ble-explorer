@@ -51,6 +51,15 @@ fun PatternEditor(
         initialized = true
     }
 
+    // Sync from bridge when the playing preset changes
+    LaunchedEffect(initialPreset) {
+        if (initialPreset.isNotEmpty() && initialPreset != selectedPreset && allPresets.containsKey(initialPreset)) {
+            selectedPreset = initialPreset
+            steps.clear()
+            steps.addAll(allPresets[initialPreset] ?: emptyList())
+        }
+    }
+
     var showSaveDialog by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }

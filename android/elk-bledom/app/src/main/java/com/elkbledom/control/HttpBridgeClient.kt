@@ -42,6 +42,12 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
     private val _stripRssi = MutableStateFlow<Map<String, Int>>(emptyMap())
     override val stripRssi: StateFlow<Map<String, Int>> = _stripRssi.asStateFlow()
 
+    private val _stripNames = MutableStateFlow<Map<String, String>>(emptyMap())
+    override val stripNames: StateFlow<Map<String, String>> = _stripNames.asStateFlow()
+
+    private val _stripDeviceStates = MutableStateFlow<Map<String, StripDeviceState>>(emptyMap())
+    override val stripDeviceStates: StateFlow<Map<String, StripDeviceState>> = _stripDeviceStates.asStateFlow()
+
     private var statusPollJob: Job? = null
     private var _lastKnownUptime: Long = -1
 
@@ -57,7 +63,7 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
                 } catch (e: Exception) {
                     Log.w(TAG, "Status poll failed: ${e.message}")
                 }
-                delay(2000)
+                delay(1000)
             }
         }
     }
@@ -72,21 +78,21 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         val data = response.optJSONObject("data") ?: return
 
         val wifi = data.optJSONObject("wifi")
-        val playback = data.optJSONObject("playback")
-        val firmware = data.optJSONObject("firmware")
-        val uptime = firmware?.optLong("uptime", 0) ?: 0
+        val pattern = data.optJSONObject("pattern")
+        val uptime = data.optLong("uptime", 0)
         _bridgeStatus.value = BridgeStatus(
             wifiState = wifi?.optString("state", "unknown") ?: "unknown",
             wifiSSID = wifi?.optString("ssid", "") ?: "",
             wifiIP = wifi?.optString("ip", "") ?: "",
             wifiRSSI = wifi?.optInt("rssi", 0) ?: 0,
-            firmwareVersion = firmware?.optString("version", "?") ?: "?",
+            firmwareVersion = data.optString("firmware", "?"),
             uptime = uptime,
-            freeHeap = firmware?.optLong("freeHeap", 0) ?: 0,
-            playbackState = playback?.optString("state", "idle") ?: "idle",
-            playbackStep = playback?.optInt("currentStep", 0) ?: 0,
-            playbackTotal = playback?.optInt("totalSteps", 0) ?: 0,
-            playbackLoop = playback?.optBoolean("loop", false) ?: false
+            freeHeap = data.optLong("freeHeap", 0),
+            playbackState = pattern?.optString("state", "idle") ?: "idle",
+            playbackStep = pattern?.optInt("currentStep", 0) ?: 0,
+            playbackTotal = pattern?.optInt("totalSteps", 0) ?: 0,
+            playbackLoop = pattern?.optBoolean("loop", false) ?: false,
+            presetName = pattern?.optString("presetName", "") ?: ""
         )
 
         // Detect bridge restart: uptime went backwards
@@ -101,6 +107,8 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         if (strips != null) {
             val states = mutableMapOf<String, ConnectionState>()
             val rssiMap = mutableMapOf<String, Int>()
+            val nameMap = mutableMapOf<String, String>()
+            val deviceStates = mutableMapOf<String, StripDeviceState>()
             for (i in 0 until strips.length()) {
                 val strip = strips.getJSONObject(i)
                 val addr = strip.getString("address")
@@ -112,9 +120,26 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
                 states[addr] = state
                 val rssi = strip.optInt("rssi", 0)
                 if (rssi != 0) rssiMap[addr] = rssi
+                val name = strip.optString("name", "")
+                if (name.isNotEmpty()) nameMap[addr] = name
+                // Parse per-strip device state
+                if (strip.has("r")) {
+                    deviceStates[addr] = StripDeviceState(
+                        r = strip.optInt("r", 255),
+                        g = strip.optInt("g", 255),
+                        b = strip.optInt("b", 255),
+                        brightness = strip.optInt("brightness", 100),
+                        power = strip.optBoolean("power", true),
+                        effectCode = strip.optInt("effectCode", 0),
+                        effectSpeed = strip.optInt("effectSpeed", 3),
+                        mode = strip.optString("mode", "color")
+                    )
+                }
             }
             _connectionStates.value = states
             _stripRssi.value = rssiMap
+            _stripNames.value = nameMap
+            _stripDeviceStates.value = deviceStates
         }
     }
 
@@ -189,10 +214,14 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         Target.STRIP2 -> "strip2"
     }
 
-    override fun sendColor(r: Int, g: Int, b: Int) {
-        post("/api/color", JSONObject()
+    override fun sendColor(r: Int, g: Int, b: Int, intentR: Int, intentG: Int, intentB: Int) {
+        val json = JSONObject()
             .put("r", r).put("g", g).put("b", b)
-            .put("target", targetString()))
+            .put("target", targetString())
+        if (intentR != r || intentG != g || intentB != b) {
+            json.put("ir", intentR).put("ig", intentG).put("ib", intentB)
+        }
+        post("/api/color", json)
     }
 
     override fun sendBrightness(level: Int) {
@@ -240,7 +269,7 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         sendBrightness(level)
     }
 
-    override fun sendPattern(steps: List<PatternStepData>, loop: Boolean) {
+    override fun sendPattern(steps: List<PatternStepData>, loop: Boolean, name: String) {
         val stepsArray = JSONArray()
         for (step in steps) {
             stepsArray.put(JSONObject()
@@ -250,14 +279,28 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
                 .put("transition", step.transition)
                 .put("fadeTime", step.fadeTime))
         }
-        post("/api/pattern", JSONObject()
+        val json = JSONObject()
             .put("steps", stepsArray)
             .put("loop", loop)
-            .put("target", targetString()))
+            .put("target", targetString())
+        if (name.isNotEmpty()) json.put("name", name)
+        post("/api/pattern", json)
     }
 
     override fun stopPattern() {
         post("/api/stop", JSONObject().put("target", targetString()))
+    }
+
+    fun saveStripNames(names: Map<String, String>) {
+        val addresses = _connectionStates.value.keys.toList()
+        val json = JSONObject()
+        addresses.forEachIndexed { index, addr ->
+            val name = names[addr] ?: return@forEachIndexed
+            json.put("strip${index + 1}_name", name)
+        }
+        if (json.length() > 0) {
+            post("/api/config", json)
+        }
     }
 
     // HTTP helpers

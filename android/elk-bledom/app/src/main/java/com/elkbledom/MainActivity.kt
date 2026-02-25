@@ -20,6 +20,7 @@ import com.elkbledom.control.DeviceControl
 import com.elkbledom.control.HttpBridgeClient
 import com.elkbledom.pattern.PatternEngine
 import com.elkbledom.pattern.PresetManager
+import com.elkbledom.ui.CalibrationWizardScreen
 import com.elkbledom.ui.DashboardScreen
 import com.elkbledom.ui.SettingsDialog
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +48,17 @@ class MainActivity : ComponentActivity() {
         if (grants.values.all { it }) {
             launchAutoReconnect()
         }
+    }
+
+    // Camera permission launcher — on grant, set flag to show wizard
+    private var pendingCameraAction: (() -> Unit)? = null
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingCameraAction?.invoke()
+        }
+        pendingCameraAction = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +96,7 @@ class MainActivity : ComponentActivity() {
 
         patternEngine = PatternEngine(deviceControl, calibration)
         patternEngine.observeBridgeRestarts(sessionState)
+        patternEngine.syncFromBridge()
 
         val isBridgeMode = controlMode == "bridge"
 
@@ -99,32 +112,46 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 var showSettings by remember { mutableStateOf(false) }
+                var showCalibrationWizard by remember { mutableStateOf(false) }
 
-                DashboardScreen(
-                    deviceControl = deviceControl,
-                    calibration = calibration,
-                    patternEngine = patternEngine,
-                    presetManager = presetManager,
-                    sessionState = sessionState,
-                    isBridgeMode = isBridgeMode,
-                    onShowSettings = { showSettings = true },
-                    onStopService = { stopLedService() }
-                )
-
-                if (showSettings) {
-                    SettingsDialog(
+                if (showCalibrationWizard) {
+                    CalibrationWizardScreen(
+                        deviceControl = deviceControl,
+                        calibration = calibration,
+                        onFinish = { showCalibrationWizard = false }
+                    )
+                } else {
+                    DashboardScreen(
+                        deviceControl = deviceControl,
+                        calibration = calibration,
+                        patternEngine = patternEngine,
+                        presetManager = presetManager,
                         sessionState = sessionState,
-                        onDismiss = { showSettings = false },
-                        onSave = { mode, url ->
-                            showSettings = false
-                            sessionState.controlMode = mode
-                            sessionState.bridgeUrl = url
-                            // Restart activity to apply mode change
-                            val intent = intent
-                            finish()
-                            startActivity(intent)
+                        isBridgeMode = isBridgeMode,
+                        onShowSettings = { showSettings = true },
+                        onStopService = { stopLedService() },
+                        onCalibrate = {
+                            requestCameraPermissionAndRun {
+                                showCalibrationWizard = true
+                            }
                         }
                     )
+
+                    if (showSettings) {
+                        SettingsDialog(
+                            sessionState = sessionState,
+                            onDismiss = { showSettings = false },
+                            onSave = { mode, url ->
+                                showSettings = false
+                                sessionState.controlMode = mode
+                                sessionState.bridgeUrl = url
+                                // Restart activity to apply mode change
+                                val intent = intent
+                                finish()
+                                startActivity(intent)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -144,6 +171,16 @@ class MainActivity : ComponentActivity() {
             (deviceControl as HttpBridgeClient).stopPolling()
         }
         super.onDestroy()
+    }
+
+    private fun requestCameraPermissionAndRun(action: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED) {
+            action()
+        } else {
+            pendingCameraAction = action
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
     }
 
     private fun saveSession() {

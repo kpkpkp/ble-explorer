@@ -1,6 +1,19 @@
 #include "command_dispatch.h"
 #include "elk_protocol.h"
 
+void CommandDispatcher::updateStrips(const char* target, std::function<void(BleStrip*)> fn) {
+    for (size_t i = 0; i < _ble.getStripCount(); i++) {
+        BleStrip* s = _ble.getStrip(i);
+        if (!s || s->state != BleStrip::READY) continue;
+        if (strcmp(target, "all") == 0 ||
+            (strcmp(target, "strip1") == 0 && i == 0) ||
+            (strcmp(target, "strip2") == 0 && i == 1) ||
+            (strcmp(target, "strip3") == 0 && i == 2)) {
+            fn(s);
+        }
+    }
+}
+
 bool CommandDispatcher::handleColor(JsonObject doc, const char* target) {
     if (!doc["r"].is<int>() || !doc["g"].is<int>() || !doc["b"].is<int>()) {
         lastError = "Missing r, g, or b fields";
@@ -11,17 +24,27 @@ bool CommandDispatcher::handleColor(JsonObject doc, const char* target) {
     uint8_t g = doc["g"].as<uint8_t>();
     uint8_t b = doc["b"].as<uint8_t>();
 
+    // Intent color (pre-calibration) for state reporting
+    uint8_t ir = doc["ir"] | r;
+    uint8_t ig = doc["ig"] | g;
+    uint8_t ib = doc["ib"] | b;
+
     _pattern.stop();
 
     uint8_t cmd[9];
     buildColorCmd(r, g, b, cmd);
     bool ok = _ble.write(cmd, target);
 
-    if (!ok) {
+    if (ok) {
+        updateStrips(target, [ir, ig, ib](BleStrip* s) {
+            s->lastR = ir; s->lastG = ig; s->lastB = ib;
+            s->mode = 0;
+        });
+    } else {
         lastError = "BLE write failed";
     }
 
-    Serial.printf("[Cmd] Color: (%d, %d, %d) -> %s = %s\n", r, g, b, target, ok ? "ok" : "fail");
+    Serial.printf("[Cmd] Color: (%d, %d, %d) intent=(%d,%d,%d) -> %s = %s\n", r, g, b, ir, ig, ib, target, ok ? "ok" : "fail");
     return ok;
 }
 
@@ -44,7 +67,12 @@ bool CommandDispatcher::handleBrightness(JsonObject doc, const char* target) {
     buildBrightnessCmd(mapped, cmd);
     bool ok = _ble.write(cmd, target);
 
-    if (!ok) {
+    if (ok) {
+        uint8_t lvl = (uint8_t)level;
+        updateStrips(target, [lvl](BleStrip* s) {
+            s->lastBrightness = lvl;
+        });
+    } else {
         lastError = "BLE write failed";
     }
 
@@ -66,7 +94,11 @@ bool CommandDispatcher::handlePower(JsonObject doc, const char* target) {
     buildPowerCmd(on, cmd);
     bool ok = _ble.write(cmd, target);
 
-    if (!ok) {
+    if (ok) {
+        updateStrips(target, [on](BleStrip* s) {
+            s->lastPower = on;
+        });
+    } else {
         lastError = "BLE write failed";
     }
 
@@ -96,7 +128,13 @@ bool CommandDispatcher::handleEffect(JsonObject doc, const char* target) {
     buildEffectCmd(code, speed, cmd);
     bool ok = _ble.write(cmd, target);
 
-    if (!ok) {
+    if (ok) {
+        updateStrips(target, [code, speed](BleStrip* s) {
+            s->lastEffectCode = code;
+            s->lastEffectSpeed = speed;
+            s->mode = 1;
+        });
+    } else {
         lastError = "BLE write failed";
     }
 
@@ -118,7 +156,12 @@ bool CommandDispatcher::handleSpeed(JsonObject doc, const char* target) {
     buildSpeedCmd((uint8_t)speed, cmd);
     bool ok = _ble.write(cmd, target);
 
-    if (!ok) {
+    if (ok) {
+        uint8_t sp = (uint8_t)speed;
+        updateStrips(target, [sp](BleStrip* s) {
+            s->lastEffectSpeed = sp;
+        });
+    } else {
         lastError = "BLE write failed";
     }
 
@@ -145,7 +188,14 @@ bool CommandDispatcher::handleColorTemp(JsonObject doc, const char* target) {
     buildColorTempCmd((uint8_t)warm, (uint8_t)cold, cmd);
     bool ok = _ble.write(cmd, target);
 
-    if (!ok) {
+    if (ok) {
+        uint8_t w = (uint8_t)warm, c = (uint8_t)cold;
+        updateStrips(target, [w, c](BleStrip* s) {
+            s->lastWarm = w;
+            s->lastCold = c;
+            s->mode = 0;
+        });
+    } else {
         lastError = "BLE write failed";
     }
 
@@ -219,14 +269,18 @@ bool CommandDispatcher::handlePattern(JsonObject doc, const char* target) {
         i++;
     }
 
-    _pattern.play(steps, count, loop, target);
+    const char* name = doc["name"] | "";
+    _pattern.play(steps, count, loop, target, name);
 
-    Serial.printf("[Cmd] Pattern: %d steps, loop=%d, target=%s\n", count, loop, target);
+    Serial.printf("[Cmd] Pattern: %d steps, loop=%d, target=%s, name=%s\n", count, loop, target, name);
     return true;
 }
 
 bool CommandDispatcher::handleStop(const char* target) {
     _pattern.stop();
+    updateStrips(target, [](BleStrip* s) {
+        s->mode = 0;
+    });
     Serial.printf("[Cmd] Stop -> %s\n", target);
     return true;
 }

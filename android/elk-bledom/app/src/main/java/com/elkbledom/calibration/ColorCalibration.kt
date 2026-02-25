@@ -3,6 +3,7 @@ package com.elkbledom.calibration
 import android.content.Context
 import android.graphics.Color
 import com.elkbledom.R
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
 
@@ -43,7 +44,7 @@ data class CalibrationPoint(
  *
  * Port of Python `_apply_visual_calibration` from elk_dashboard.py.
  */
-class ColorCalibration(context: Context) {
+class ColorCalibration(private val context: Context) {
 
     /** Toggle calibration on or off. When disabled, [apply] returns input unchanged. */
     var enabled: Boolean = true
@@ -51,30 +52,53 @@ class ColorCalibration(context: Context) {
     /** Calibrated white point — strip input values that produce perceptual white. */
     private val WHITE_STRIP = Triple(75, 40, 15)
 
+    private val prefs = context.getSharedPreferences("elk_calibration", Context.MODE_PRIVATE)
+
     /** 12-point hue calibration map, sorted ascending by degree. */
-    private val points: List<CalibrationPoint>
+    var points: List<CalibrationPoint>
+        private set
+
+    /** Whether custom calibration data is saved in SharedPreferences. */
+    val isCustom: Boolean get() = prefs.contains("calibration_data")
 
     init {
+        points = loadFromPrefs() ?: loadFromBundled()
+    }
+
+    /**
+     * Save new calibration points to SharedPreferences.
+     */
+    fun save(newPoints: List<CalibrationPoint>) {
+        points = newPoints.sortedBy { it.deg }
+        val json = JSONObject()
+        points.forEachIndexed { index, pt ->
+            val entry = JSONObject()
+            entry.put("deg", pt.deg.toDouble())
+            entry.put("standard", JSONArray(pt.standard.toList()))
+            entry.put("strip_input", JSONArray(pt.stripInput.toList()))
+            json.put("hue_$index", entry)
+        }
+        prefs.edit().putString("calibration_data", json.toString()).apply()
+    }
+
+    /**
+     * Reset to bundled calibration, removing custom data.
+     */
+    fun reset() {
+        prefs.edit().remove("calibration_data").apply()
+        points = loadFromBundled()
+    }
+
+    private fun loadFromPrefs(): List<CalibrationPoint>? {
+        val data = prefs.getString("calibration_data", null) ?: return null
+        return parseCalibrationJson(data)
+    }
+
+    private fun loadFromBundled(): List<CalibrationPoint> {
         val raw = context.resources.openRawResource(R.raw.visual_calibration)
             .bufferedReader()
             .use { it.readText() }
-        val json = JSONObject(raw)
-        val list = mutableListOf<CalibrationPoint>()
-        for (name in json.keys()) {
-            val entry = json.getJSONObject(name)
-            val deg = entry.getDouble("deg").toFloat()
-            val stdArr = entry.getJSONArray("standard")
-            val stripArr = entry.getJSONArray("strip_input")
-            list.add(
-                CalibrationPoint(
-                    deg = deg,
-                    standard = IntArray(3) { stdArr.getInt(it) },
-                    stripInput = IntArray(3) { stripArr.getInt(it) },
-                )
-            )
-        }
-        list.sortBy { it.deg }
-        points = list
+        return parseCalibrationJson(raw)
     }
 
     /**
@@ -164,5 +188,32 @@ class ColorCalibration(context: Context) {
             outG.roundToInt().coerceIn(0, 255),
             outB.roundToInt().coerceIn(0, 255),
         )
+    }
+
+    companion object {
+        /**
+         * Parse calibration JSON into a sorted list of CalibrationPoints.
+         * Works with both the bundled visual_calibration.json format
+         * and the SharedPreferences serialized format.
+         */
+        fun parseCalibrationJson(jsonStr: String): List<CalibrationPoint> {
+            val json = JSONObject(jsonStr)
+            val list = mutableListOf<CalibrationPoint>()
+            for (name in json.keys()) {
+                val entry = json.getJSONObject(name)
+                val deg = entry.getDouble("deg").toFloat()
+                val stdArr = entry.getJSONArray("standard")
+                val stripArr = entry.getJSONArray("strip_input")
+                list.add(
+                    CalibrationPoint(
+                        deg = deg,
+                        standard = IntArray(3) { stdArr.getInt(it) },
+                        stripInput = IntArray(3) { stripArr.getInt(it) },
+                    )
+                )
+            }
+            list.sortBy { it.deg }
+            return list
+        }
     }
 }

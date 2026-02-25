@@ -5,7 +5,7 @@ void PatternEngine::begin(Preferences& prefs) {
     _prefs = &prefs;
 }
 
-void PatternEngine::play(PatternStep* steps, uint8_t count, bool loop, const char* target) {
+void PatternEngine::play(PatternStep* steps, uint8_t count, bool loop, const char* target, const char* presetName) {
     if (count == 0 || count > PATTERN_MAX_STEPS) return;
 
     _stepCount = count;
@@ -19,6 +19,13 @@ void PatternEngine::play(PatternStep* steps, uint8_t count, bool loop, const cha
         _target[sizeof(_target) - 1] = '\0';
     } else {
         strcpy(_target, "all");
+    }
+
+    if (presetName) {
+        strncpy(_presetName, presetName, sizeof(_presetName) - 1);
+        _presetName[sizeof(_presetName) - 1] = '\0';
+    } else {
+        _presetName[0] = '\0';
     }
 
     // Initialize previous color to black
@@ -60,6 +67,18 @@ void PatternEngine::play(PatternStep* steps, uint8_t count, bool loop, const cha
 }
 
 void PatternEngine::stop() {
+    if (_ble && _state != IDLE) {
+        for (size_t i = 0; i < _ble->getStripCount(); i++) {
+            BleStrip* s = _ble->getStrip(i);
+            if (!s || s->state != BleStrip::READY) continue;
+            if (strcmp(_target, "all") == 0 ||
+                (strcmp(_target, "strip1") == 0 && i == 0) ||
+                (strcmp(_target, "strip2") == 0 && i == 1) ||
+                (strcmp(_target, "strip3") == 0 && i == 2)) {
+                s->mode = 0;
+            }
+        }
+    }
     _state = IDLE;
     _stepCount = 0;
     _currentStep = 0;
@@ -68,6 +87,7 @@ void PatternEngine::stop() {
 }
 
 void PatternEngine::tick(BleManager& ble) {
+    if (!_ble) _ble = &ble;
     if (_state == IDLE) return;
 
     uint32_t now = millis();
@@ -163,6 +183,20 @@ void PatternEngine::sendColor(BleManager& ble, uint8_t r, uint8_t g, uint8_t b, 
     uint8_t mappedBr = (uint8_t)((uint16_t)brightness * 255 / 100);
     buildBrightnessCmd(mappedBr, cmd);
     ble.write(cmd, _target);
+
+    // Update tracked strip state
+    for (size_t i = 0; i < ble.getStripCount(); i++) {
+        BleStrip* s = ble.getStrip(i);
+        if (!s || s->state != BleStrip::READY) continue;
+        if (strcmp(_target, "all") == 0 ||
+            (strcmp(_target, "strip1") == 0 && i == 0) ||
+            (strcmp(_target, "strip2") == 0 && i == 1) ||
+            (strcmp(_target, "strip3") == 0 && i == 2)) {
+            s->lastR = r; s->lastG = g; s->lastB = b;
+            s->lastBrightness = brightness;
+            s->mode = 2; // pattern
+        }
+    }
 }
 
 uint8_t PatternEngine::lerp8(uint8_t a, uint8_t b, float t) {
@@ -170,14 +204,15 @@ uint8_t PatternEngine::lerp8(uint8_t a, uint8_t b, float t) {
 }
 
 // --- NVS persistence ---
-// Binary format: [stepCount:1][loop:1][targetLen:1][target:N][steps: stepCount * 9]
+// Binary format: [stepCount:1][loop:1][targetLen:1][target:N][nameLen:1][name:N][steps: stepCount * 9]
 // Each step: [r:1][g:1][b:1][brightness:1][durationMs:2 LE][transition:1][fadeTimeMs:2 LE]
 
 void PatternEngine::saveToNVS() {
     if (!_prefs || _stepCount == 0) return;
 
     uint8_t targetLen = (uint8_t)strlen(_target);
-    size_t size = 3 + targetLen + (_stepCount * 9);
+    uint8_t nameLen = (uint8_t)strlen(_presetName);
+    size_t size = 4 + targetLen + nameLen + (_stepCount * 9);
     uint8_t buf[512];
     if (size > sizeof(buf)) return;
 
@@ -187,6 +222,9 @@ void PatternEngine::saveToNVS() {
     buf[pos++] = targetLen;
     memcpy(&buf[pos], _target, targetLen);
     pos += targetLen;
+    buf[pos++] = nameLen;
+    memcpy(&buf[pos], _presetName, nameLen);
+    pos += nameLen;
 
     for (uint8_t i = 0; i < _stepCount; i++) {
         buf[pos++] = _steps[i].r;
@@ -202,7 +240,7 @@ void PatternEngine::saveToNVS() {
 
     _prefs->putBytes("pat_data", buf, pos);
     _prefs->putUChar("pat_active", 1);
-    Serial.printf("[Pattern] Saved %d steps to NVS (%d bytes)\n", _stepCount, pos);
+    Serial.printf("[Pattern] Saved %d steps to NVS (%d bytes, name=%s)\n", _stepCount, pos, _presetName);
 }
 
 void PatternEngine::loadFromNVS(BleManager& ble) {
@@ -243,6 +281,19 @@ void PatternEngine::loadFromNVS(BleManager& ble) {
     }
     pos += targetLen;
 
+    // Read preset name (new format) — if remaining data allows it
+    char presetName[64] = "";
+    size_t remainingForSteps = len - pos;
+    if (remainingForSteps > (size_t)(stepCount * 9)) {
+        // New format has nameLen byte
+        uint8_t nameLen = buf[pos++];
+        if (nameLen > 0 && nameLen < sizeof(presetName) && pos + nameLen <= len) {
+            memcpy(presetName, &buf[pos], nameLen);
+            presetName[nameLen] = '\0';
+        }
+        pos += nameLen;
+    }
+
     PatternStep steps[PATTERN_MAX_STEPS];
     for (uint8_t i = 0; i < stepCount; i++) {
         steps[i].r = buf[pos++];
@@ -256,9 +307,9 @@ void PatternEngine::loadFromNVS(BleManager& ble) {
         pos += 2;
     }
 
-    Serial.printf("[Pattern] Restored pattern from NVS: %d steps, loop=%d, target=%s\n",
-                  stepCount, loop, target);
-    play(steps, stepCount, loop, target);
+    Serial.printf("[Pattern] Restored pattern from NVS: %d steps, loop=%d, target=%s, name=%s\n",
+                  stepCount, loop, target, presetName);
+    play(steps, stepCount, loop, target, presetName);
 }
 
 void PatternEngine::clearNVS() {
