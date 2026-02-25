@@ -47,6 +47,11 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 .hx input{flex:1;padding:6px;background:#0f3460;color:#e0e0e0;border:1px solid #333;border-radius:6px;font-size:.8em;font-family:monospace}
 .dev{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #222;font-size:.8em}
 .dev button{flex:none;padding:4px 10px;font-size:.75em}
+.coll{cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.coll:after{content:'\25BC';font-size:.6em;color:#555;transition:transform .2s}
+.coll.open:after{transform:rotate(180deg)}
+.fold{max-height:0;overflow:hidden;transition:max-height .25s ease}
+.fold.open{max-height:400px}
 .pr{display:flex;gap:6px;align-items:center;margin-top:4px}
 .pr select{flex:1}
 .pr button{flex:none;min-width:44px;min-height:38px;font-size:1.1em}
@@ -54,6 +59,22 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 .er{display:flex;gap:6px;align-items:center}
 .er select{flex:1}
 .er button{flex:none;min-width:44px;min-height:38px;font-size:1.1em}
+.stl{max-height:340px;overflow-y:auto;margin:6px 0;background:#0f1530;border-radius:6px;padding:4px}
+.sh{display:flex;gap:4px;align-items:center;padding:2px 4px;font-size:.65em;color:#555;text-transform:uppercase;letter-spacing:.3px}
+.sh span{text-align:center;overflow:hidden}
+.sh .sn{width:18px}.sh .xc{width:22px}.sh .xh{flex:3;min-width:0}.sh .xn{flex:2;min-width:0}.sh .xt{width:28px}.sh .xa{width:68px;text-align:right}
+.st{display:flex;gap:4px;align-items:center;padding:5px 4px;border-bottom:1px solid #1a1a2e;font-size:.8em}
+.st.act{background:#1a2740}
+.st input{padding:4px;background:#0a0e27;color:#e0e0e0;border:1px solid #333;border-radius:4px;font-family:monospace;font-size:.9em;width:100%;min-width:0}
+.st .sc{width:22px;height:22px;border-radius:4px;border:1px solid #444;cursor:pointer;flex-shrink:0}
+.st .hi{flex:3;min-width:0}.st .ni{flex:2;min-width:0}
+.st .ni.dim{opacity:.3;pointer-events:none}
+.st button{padding:3px 6px;font-size:.9em;min-width:0;line-height:1.2}
+.sn{color:#555;width:18px;flex-shrink:0;text-align:center}
+.st .xt{width:28px;flex-shrink:0}
+.bp{background:#0a0e27;border-radius:6px;padding:8px;margin:6px 0;display:none;flex-wrap:wrap;gap:8px;align-items:center;font-size:.78em}
+.bp input{width:46px;padding:3px;background:#16213e;color:#e0e0e0;border:1px solid #333;border-radius:3px;font-size:1em}
+.bp label{margin:0;color:#888;display:inline-flex;align-items:center;gap:3px}
 </style>
 </head>
 <body>
@@ -63,6 +84,17 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <div class="sr"><span><span class="d dof" id="wD"></span>WiFi: <span id="wS">--</span></span><span id="wIP"></span></div>
 <div class="sr"><span id="sC"></span><span id="fV"></span></div>
 <div class="sr"><span>Uptime: <span id="ut">--</span></span><span id="hp"></span></div>
+</div>
+
+<div class="c">
+<h2 class="coll" id="dvH" onclick="togDv()">Devices</h2>
+<div class="fold" id="dvF">
+<div id="dL" style="margin-top:6px"></div>
+<div class="br" style="margin-top:8px">
+<button class="bsc" style="flex:1" id="scBtn" onclick="doScan()">Scan for Devices</button>
+</div>
+<div id="scR"></div>
+</div>
 </div>
 
 <div class="c">
@@ -88,6 +120,20 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <label style="margin:0;cursor:pointer"><input type="checkbox" id="lpCb" checked> Loop</label>
 <span class="pi" id="pSt"></span>
 </div>
+<div class="stl" id="sL"></div>
+<div class="br" style="margin-top:6px">
+<button class="bsm" style="flex:1" onclick="addSt()">+ Add Step</button>
+<button class="bsm" style="flex:1" id="bkBtn" onclick="togBk()">Bulk Edit</button>
+</div>
+<div class="bp" id="bkP">
+<label>Brt:<input type="number" id="bkBr" min="0" max="100" placeholder="--"></label>
+<label>Dur:<input type="number" id="bkDu" min="0.1" max="60" step="0.1" placeholder="--"></label>
+<label>Tr:<button class="bsm" id="bkTr" style="padding:2px 8px;min-width:32px" onclick="togBkTr()">--</button></label>
+<label>Fade:<input type="number" id="bkFd" min="0.1" max="10" step="0.1" placeholder="--"></label>
+<button class="bac" style="padding:4px 12px" onclick="apBk()">Apply</button>
+</div>
+<label>Brightness <span class="v" id="brV">100</span>%</label>
+<input type="range" id="brS" min="0" max="100" value="100">
 </div>
 
 <div class="c">
@@ -101,8 +147,6 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <input type="range" id="gS" min="0" max="255" value="0">
 <label>B <span class="v" id="bV">0</span></label>
 <input type="range" id="bS" min="0" max="255" value="0">
-<label>Brightness <span class="v" id="brV">100</span>%</label>
-<input type="range" id="brS" min="0" max="100" value="100">
 </div>
 
 <div class="c">
@@ -115,14 +159,6 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <input type="range" id="spS" min="1" max="10" value="3">
 </div>
 
-<div class="c">
-<h2>Devices</h2>
-<div id="dL"></div>
-<div class="br" style="margin-top:8px">
-<button class="bsc" style="flex:1" id="scBtn" onclick="doScan()">Scan for Devices</button>
-</div>
-<div id="scR"></div>
-</div>
 
 <script>
 var SW=['FF0000','FF7F00','FFFF00','7FFF00','00FF00','00FF7F','00FFFF','007FFF',
@@ -171,11 +207,19 @@ function fUp(s){var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+'h '+m
 // Build preset dropdown
 (function(){var s=$('pSel');Object.keys(P).forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o)})})();
 
-// Dropdown interaction gating — prevent poll from overwriting user selection
+var steps=[];
+
+// Dropdown interaction gating + load preset into editor
 $('pSel').addEventListener('focus',function(){S._dPr=1});
-$('pSel').addEventListener('change',function(){S._dPr=1});
+$('pSel').addEventListener('change',function(){
+S._dPr=1;
+var n=this.value;
+if(n&&P[n]){steps=P[n].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});renSt()}
+});
 $('fxS').addEventListener('focus',function(){S._dFx=1});
 $('fxS').addEventListener('change',function(){S._dFx=1});
+
+function togDv(){$('dvH').classList.toggle('open');$('dvF').classList.toggle('open')}
 
 function tgt(t){
 S.tgt=t;
@@ -218,13 +262,50 @@ post('/api/effect',{code:+$('fxS').value,speed:+$('spS').value,target:S.tgt});
 }
 
 function playP(){
-var name=$('pSel').value;
-if(!name||!P[name])return;
+if(!steps.length)return;
 S._dPr=0;S._dLp=0;
-var steps=P[name].map(function(h){var rgb=h2r(h);return{r:rgb[0],g:rgb[1],b:rgb[2],brightness:100,duration:2000,transition:'cut',fadeTime:500}});
+var name=$('pSel').value||'Custom';
 var loop=$('lpCb').checked;
-post('/api/pattern',{steps:steps,loop:loop,target:S.tgt,name:name});
+var api=steps.map(function(s){var rgb=h2r(s.hex);return{r:rgb[0],g:rgb[1],b:rgb[2],brightness:s.br,duration:Math.round(s.dur*1000),transition:s.tr,fadeTime:Math.round(s.fade*1000)}});
+post('/api/pattern',{steps:api,loop:loop,target:S.tgt,name:name});
 }
+
+// --- Step Editor ---
+function renSt(){
+var el=$('sL');
+if(!steps.length){el.innerHTML='<div style="color:#555;font-size:.78em;padding:8px;text-align:center">No steps \u2014 select a preset or add steps</div>';return}
+var hdr='<div class="sh"><span class="sn">#</span><span class="xc"></span><span class="xh">Color</span><span class="xn">Brt%</span><span class="xn">Dur(s)</span><span class="xt">Tr</span><span class="xn">Fade(s)</span><span class="xa"></span></div>';
+el.innerHTML=hdr+steps.map(function(s,i){
+var act=S.play&&i===S.pStep?' act':'';
+var rgb=h2r(s.hex);var bg='rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')';
+var dm=s.tr==='cut'?' dim':'';
+return '<div class="st'+act+'">'+'<span class="sn">'+(i+1)+'</span>'+
+'<div class="sc" style="background:'+bg+'" onclick="stClr('+i+')"></div>'+
+'<input class="hi" type="text" value="'+s.hex+'" maxlength="6" onchange="uSt('+i+',\'hex\',this.value.toUpperCase())">'+
+'<input class="ni" type="number" value="'+s.br+'" min="0" max="100" onchange="uSt('+i+',\'br\',+this.value)">'+
+'<input class="ni" type="number" value="'+s.dur+'" min="0.1" max="60" step="0.1" onchange="uSt('+i+',\'dur\',+this.value)">'+
+'<button class="bsm xt" onclick="togTr('+i+')" title="Cut/Fade">'+(s.tr==='fade'?'F':'C')+'</button>'+
+'<input class="ni'+dm+'" type="number" value="'+s.fade+'" min="0.1" max="10" step="0.1" onchange="uSt('+i+',\'fade\',+this.value)">'+
+'<button class="bsm" style="padding:2px 4px" onclick="mvSt('+i+',-1)" title="Move up">\u25B2</button>'+
+'<button class="bsm" style="padding:2px 4px" onclick="mvSt('+i+',1)" title="Move down">\u25BC</button>'+
+'<button class="bof" style="padding:2px 5px" onclick="rmSt('+i+')" title="Remove">\u00D7</button>'+
+'</div>'}).join('')}
+
+function addSt(){steps.push({hex:r2h(S.r,S.g,S.b),br:S.br,dur:2.0,tr:'cut',fade:0.5});renSt()}
+function rmSt(i){steps.splice(i,1);renSt()}
+function mvSt(i,d){var j=i+d;if(j<0||j>=steps.length)return;var t=steps[i];steps[i]=steps[j];steps[j]=t;renSt()}
+function uSt(i,f,v){steps[i][f]=v;if(f==='hex'){var el=$('sL').children[i];if(el){var sw=el.querySelector('.sc');if(sw){var rgb=h2r(v);sw.style.background='rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')'}}}}
+function togTr(i){steps[i].tr=steps[i].tr==='cut'?'fade':'cut';renSt()}
+function stClr(i){steps[i].hex=r2h(S.r,S.g,S.b);renSt()}
+
+// Bulk edit
+function togBk(){var p=$('bkP');p.style.display=p.style.display==='none'?'flex':'none'}
+var bkTrV=null;
+function togBkTr(){if(bkTrV===null)bkTrV='cut';else if(bkTrV==='cut')bkTrV='fade';else bkTrV=null;$('bkTr').textContent=bkTrV||'--'}
+function apBk(){var br=$('bkBr').value,du=$('bkDu').value,fd=$('bkFd').value;
+steps.forEach(function(s){if(br!=='')s.br=+br;if(du!=='')s.dur=+du;if(bkTrV!==null)s.tr=bkTrV;if(fd!=='')s.fade=+fd});renSt()}
+
+renSt();
 
 // Slider setup with interaction gating
 function sSlider(id,vId,dk,cb){
@@ -292,6 +373,9 @@ var ps=S.play?'Step '+(S.pStep+1)+'/'+S.pTot+(S.pn?' \u2014 '+S.pn:''):'Idle';
 $('pSt').textContent=ps;
 if(S.pn&&!S._dPr)$('pSel').value=S.pn;
 if(!S._dLp)$('lpCb').checked=S.lp;
+
+var stEls=$('sL').children;
+for(var si=0;si<stEls.length;si++)stEls[si].classList.toggle('act',S.play&&si===S.pStep);
 
 var st=rStrip();
 if(st&&st.mode==='effect'&&!S._dSp&&!S._dFx){

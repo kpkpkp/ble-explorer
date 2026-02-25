@@ -61,7 +61,12 @@ bool CommandDispatcher::handleBrightness(JsonObject doc, const char* target) {
     // Map 0-100 to 0-255
     uint8_t mapped = (uint8_t)((uint16_t)level * 255 / 100);
 
-    _pattern.stop();
+    // If pattern is playing, update its steps instead of stopping it
+    if (_pattern.isPlaying()) {
+        _pattern.setBrightness((uint8_t)level);
+    } else {
+        _pattern.stop();
+    }
 
     uint8_t cmd[9];
     buildBrightnessCmd(mapped, cmd);

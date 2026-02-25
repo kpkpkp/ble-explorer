@@ -40,6 +40,14 @@ public:
     const char* getPresetName() const { return _presetName; }
     bool        getLoop() const { return _loop; }
 
+    // Update brightness on all steps without stopping playback
+    void setBrightness(uint8_t brightness) {
+        for (uint8_t i = 0; i < _stepCount; i++) {
+            _steps[i].brightness = brightness;
+        }
+        _currBr = brightness;
+    }
+
     const char* stateStr() const {
         switch (_state) {
             case IDLE:   return "idle";

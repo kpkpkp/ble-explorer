@@ -25,7 +25,7 @@
 
 // --- Device identification ---
 #define DEVICE_NAME_PREFIX      "ELK-BLEDOM"
-#define FIRMWARE_VERSION        "1.1.0"
+#define FIRMWARE_VERSION        "1.2.0"
 #define NVS_NAMESPACE           "elk-bridge"
 #define BRIDGE_BLE_NAME         "ELK-Bridge"
 #define BRIDGE_MDNS_NAME        "elk-bridge"
