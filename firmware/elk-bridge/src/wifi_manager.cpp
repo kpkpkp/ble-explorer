@@ -97,7 +97,7 @@ void WiFiManager::sendBeacon() {
 
     char beacon[192];
     snprintf(beacon, sizeof(beacon),
-             "{\"name\":\"ELK-Bridge\",\"ip\":\"%s\",\"port\":%d,"
+             "{\"name\":\"ESP32-StringLights\",\"ip\":\"%s\",\"port\":%d,"
              "\"mac\":\"%s\",\"version\":\"%s\",\"uptime\":%lu}",
              WiFi.localIP().toString().c_str(), HTTP_PORT,
              macStr, FIRMWARE_VERSION, millis() / 1000);

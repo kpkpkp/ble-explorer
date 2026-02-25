@@ -8,7 +8,7 @@ static const char HTML_DASHBOARD[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ELK Bridge</title>
+<title>ESP32 String Lights</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;max-width:480px;margin:0 auto}
@@ -78,7 +78,7 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 </style>
 </head>
 <body>
-<h1>ELK Bridge</h1>
+<h1>ESP32 String Lights</h1>
 
 <div class="c">
 <div class="sr"><span><span class="d dof" id="wD"></span>WiFi: <span id="wS">--</span></span><span id="wIP"></span></div>

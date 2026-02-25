@@ -27,9 +27,9 @@
 #define DEVICE_NAME_PREFIX      "ELK-BLEDOM"
 #define FIRMWARE_VERSION        "1.2.0"
 #define NVS_NAMESPACE           "elk-bridge"
-#define BRIDGE_BLE_NAME         "ELK-Bridge"
-#define BRIDGE_MDNS_NAME        "elk-bridge"
-#define BRIDGE_AP_PREFIX        "ELK-Bridge-"
+#define BRIDGE_BLE_NAME         "ESP32-StringLights"
+#define BRIDGE_MDNS_NAME        "esp32-stringlights"
+#define BRIDGE_AP_PREFIX        "StringLights-"
 
 // --- HTTP server ---
 #define HTTP_PORT               80

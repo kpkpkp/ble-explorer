@@ -1,5 +1,5 @@
 /*
- * ELK Bridge — WiFi-to-BLE bridge for ELK-BLEDOM LED strips
+ * ESP32 String Lights — WiFi-to-BLE bridge for ELK-BLEDOM LED strips
  *
  * Target: ESP32-C3 SuperMini (Lolin C3 Mini)
  * Framework: Arduino + NimBLE + ESPAsyncWebServer
@@ -34,7 +34,7 @@ void setup() {
     delay(500); // Let USB CDC settle
     Serial.println();
     Serial.println("================================");
-    Serial.println("  ELK Bridge v" FIRMWARE_VERSION);
+    Serial.println("  ESP32 String Lights v" FIRMWARE_VERSION);
     Serial.println("================================");
 
     // --- Status LED ---
@@ -84,7 +84,7 @@ void setup() {
     }
 
     Serial.println();
-    Serial.printf("ELK Bridge ready at http://%s/\n", wifiManager.getIP().c_str());
+    Serial.printf("ESP32 String Lights ready at http://%s/\n", wifiManager.getIP().c_str());
     Serial.printf("mDNS: http://%s.local/\n", BRIDGE_MDNS_NAME);
     Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
     Serial.println("================================");
