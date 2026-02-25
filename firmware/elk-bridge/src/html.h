@@ -374,7 +374,7 @@ $('pSt').textContent=ps;
 if(S.pn&&!S._dPr)$('pSel').value=S.pn;
 if(!S._dLp)$('lpCb').checked=S.lp;
 
-var stEls=$('sL').children;
+var stEls=$('sL').querySelectorAll('.st');
 for(var si=0;si<stEls.length;si++)stEls[si].classList.toggle('act',S.play&&si===S.pStep);
 
 var st=rStrip();
@@ -409,6 +409,12 @@ S.pn=d.pattern.presetName||'';
 S.lp=d.pattern.loop;
 S.pStep=d.pattern.currentStep;
 S.pTot=d.pattern.totalSteps;
+
+// Auto-populate editor from running preset on page load
+if(S.play&&S.pn&&P[S.pn]&&!steps.length){
+steps=P[S.pn].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});
+renSt();
+}
 
 var st=rStrip();
 if(st){
