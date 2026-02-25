@@ -15,9 +15,19 @@ bool BleManager::connect(const char* address, uint8_t addrType) {
             Serial.printf("[BLE] Already connected to %s\n", address);
             return true;
         }
-        // Remove stale entry and reconnect
+        // In-place reconnect: clean up old client, retry with existing entry
         disconnectStrip(existing);
-        _strips.erase(_strips.begin() + idx);
+        Serial.printf("[BLE] Reconnecting to %s (addrType=%d)...\n",
+                      address, existing.addrType);
+        if (connectStrip(existing)) {
+            Serial.printf("[BLE] Reconnected to %s as strip%d, heap=%d\n",
+                          address, idx + 1, ESP.getFreeHeap());
+            return true;
+        }
+        // Failed — keep entry as LOST for future retry (don't erase)
+        existing.state = BleStrip::LOST;
+        Serial.printf("[BLE] Reconnect failed for %s\n", address);
+        return false;
     }
 
     if (_strips.size() >= BLE_MAX_STRIPS) {
@@ -48,63 +58,71 @@ bool BleManager::connect(const char* address, uint8_t addrType) {
 }
 
 bool BleManager::connectStrip(BleStrip& strip) {
-    strip.state = BleStrip::CONNECTING;
+    // Retry up to 3 times — shared radio on ESP32-C3 makes BLE connects flaky
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        strip.state = BleStrip::CONNECTING;
 
-    strip.client = NimBLEDevice::createClient();
-    if (!strip.client) {
-        Serial.println("[BLE] Failed to create client");
-        strip.state = BleStrip::DISCONNECTED;
-        return false;
+        strip.client = NimBLEDevice::createClient();
+        if (!strip.client) {
+            Serial.println("[BLE] Failed to create client");
+            strip.state = BleStrip::DISCONNECTED;
+            return false;
+        }
+
+        strip.client->setConnectTimeout(BLE_CONNECT_TIMEOUT_MS / 1000);
+
+        NimBLEAddress addr(strip.address, strip.addrType);
+        bool connected = strip.client->connect(addr);
+
+        if (!connected) {
+            Serial.printf("[BLE] Connection to %s failed attempt %d/3 (addrType=%d)\n",
+                          strip.address.c_str(), attempt, strip.addrType);
+            NimBLEDevice::deleteClient(strip.client);
+            strip.client = nullptr;
+            if (attempt < 3) {
+                delay(500);  // Brief pause before retry
+                continue;
+            }
+            strip.state = BleStrip::DISCONNECTED;
+            return false;
+        }
+
+        strip.state = BleStrip::DISCOVERING;
+        Serial.printf("[BLE] Connected on attempt %d, discovering services on %s...\n",
+                      attempt, strip.address.c_str());
+
+        NimBLERemoteService* svc = strip.client->getService(ELK_SERVICE_UUID);
+        if (!svc) {
+            Serial.printf("[BLE] Service 0xFFF0 not found on %s\n", strip.address.c_str());
+            strip.client->disconnect();
+            NimBLEDevice::deleteClient(strip.client);
+            strip.client = nullptr;
+            strip.state = BleStrip::DISCONNECTED;
+            return false;
+        }
+
+        strip.writeChar = svc->getCharacteristic(ELK_WRITE_CHAR_UUID);
+        if (!strip.writeChar) {
+            Serial.printf("[BLE] Characteristic 0xFFF3 not found on %s\n", strip.address.c_str());
+            strip.client->disconnect();
+            NimBLEDevice::deleteClient(strip.client);
+            strip.client = nullptr;
+            strip.state = BleStrip::DISCONNECTED;
+            return false;
+        }
+
+        strip.state = BleStrip::READY;
+        strip.retries = 0;
+        strip.lastSeen = millis();
+
+        // Relax BLE connection interval to free radio time for WiFi (shared radio on ESP32-C3)
+        strip.client->updateConnParams(48, 96, 0, 400);
+
+        Serial.printf("[BLE] Strip %s ready on attempt %d (service+char discovered)\n",
+                      strip.address.c_str(), attempt);
+        return true;
     }
-
-    strip.client->setConnectTimeout(BLE_CONNECT_TIMEOUT_MS / 1000);
-
-    NimBLEAddress addr(strip.address, strip.addrType);
-    bool connected = strip.client->connect(addr);
-
-    if (!connected) {
-        Serial.printf("[BLE] Connection to %s failed (addrType=%d)\n",
-                      strip.address.c_str(), strip.addrType);
-        NimBLEDevice::deleteClient(strip.client);
-        strip.client = nullptr;
-        strip.state = BleStrip::DISCONNECTED;
-        return false;
-    }
-
-    strip.state = BleStrip::DISCOVERING;
-    Serial.printf("[BLE] Connected, discovering services on %s...\n", strip.address.c_str());
-
-    NimBLERemoteService* svc = strip.client->getService(ELK_SERVICE_UUID);
-    if (!svc) {
-        Serial.printf("[BLE] Service 0xFFF0 not found on %s\n", strip.address.c_str());
-        strip.client->disconnect();
-        NimBLEDevice::deleteClient(strip.client);
-        strip.client = nullptr;
-        strip.state = BleStrip::DISCONNECTED;
-        return false;
-    }
-
-    strip.writeChar = svc->getCharacteristic(ELK_WRITE_CHAR_UUID);
-    if (!strip.writeChar) {
-        Serial.printf("[BLE] Characteristic 0xFFF3 not found on %s\n", strip.address.c_str());
-        strip.client->disconnect();
-        NimBLEDevice::deleteClient(strip.client);
-        strip.client = nullptr;
-        strip.state = BleStrip::DISCONNECTED;
-        return false;
-    }
-
-    strip.state = BleStrip::READY;
-    strip.retries = 0;
-    strip.lastSeen = millis();
-
-    // Relax BLE connection interval to free radio time for WiFi (shared radio on ESP32-C3)
-    // Params: minInterval, maxInterval (units of 1.25ms), latency, timeout (units of 10ms)
-    // 48=60ms, 96=120ms → BLE only uses radio every 60-120ms instead of default 7.5-15ms
-    strip.client->updateConnParams(48, 96, 0, 400);
-
-    Serial.printf("[BLE] Strip %s ready (service+char discovered)\n", strip.address.c_str());
-    return true;
+    return false;  // unreachable, but satisfies compiler
 }
 
 bool BleManager::disconnect(const char* address) {
@@ -273,26 +291,16 @@ void BleManager::loop() {
     }
 
     // Attempt reconnect for ONE lost strip per iteration (via async queue)
-    for (auto it = _strips.begin(); it != _strips.end(); ) {
-        if (it->state == BleStrip::LOST) {
-            if (it->retries >= BLE_MAX_RECONNECT_RETRIES) {
-                Serial.printf("[BLE] Strip %s max retries (%d), removing\n",
-                              it->address.c_str(), BLE_MAX_RECONNECT_RETRIES);
-                disconnectStrip(*it);
-                it = _strips.erase(it);
-                continue;
-            }
-            it->retries++;
-            Serial.printf("[BLE] Queuing reconnect for %s (attempt %d/%d), heap=%d\n",
-                          it->address.c_str(), it->retries, BLE_MAX_RECONNECT_RETRIES,
-                          ESP.getFreeHeap());
-            requestConnect(it->address.c_str(), it->addrType);
-            // Remove the LOST entry — async connect will re-add if successful
-            disconnectStrip(*it);
-            it = _strips.erase(it);
+    // LOST entries stay in _strips — connect() does in-place reconnect
+    // NVS-saved strips retry indefinitely until connected
+    for (auto& strip : _strips) {
+        if (strip.state == BleStrip::LOST) {
+            strip.retries++;
+            strip.lastSeen = now;
+            Serial.printf("[BLE] Queuing reconnect for %s (attempt %d), heap=%d\n",
+                          strip.address.c_str(), strip.retries, ESP.getFreeHeap());
+            requestConnect(strip.address.c_str(), strip.addrType);
             return; // Only one reconnect per loop cycle
-        } else {
-            ++it;
         }
     }
 }

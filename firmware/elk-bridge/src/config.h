@@ -5,9 +5,9 @@
 
 // --- BLE settings ---
 #define BLE_MAX_STRIPS          3
-#define BLE_RECONNECT_INTERVAL_MS  10000
-#define BLE_CONNECT_TIMEOUT_MS  10000
-#define BLE_MAX_RECONNECT_RETRIES  10
+#define BLE_RECONNECT_INTERVAL_MS  5000
+#define BLE_CONNECT_TIMEOUT_MS  8000
+#define BLE_MAX_RECONNECT_RETRIES  255
 #define BLE_SCAN_DURATION_S     5
 
 // --- WiFi settings ---
