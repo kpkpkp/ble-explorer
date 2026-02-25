@@ -214,7 +214,7 @@ $('pSel').addEventListener('focus',function(){S._dPr=1});
 $('pSel').addEventListener('change',function(){
 S._dPr=1;
 var n=this.value;
-if(n&&P[n]){steps=P[n].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});renSt()}
+if(n&&P[n]){steps=P[n].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});renSt();if(S.play)playP()}
 });
 $('fxS').addEventListener('focus',function(){S._dFx=1});
 $('fxS').addEventListener('change',function(){S._dFx=1});
@@ -289,11 +289,11 @@ return '<div class="st'+act+'">'+'<span class="sn">'+(i+1)+'</span>'+
 '<button class="bof" style="padding:2px 5px" onclick="rmSt('+i+')" title="Remove">\u00D7</button>'+
 '</div>'}).join('')}
 
-function addSt(){steps.push({hex:r2h(S.r,S.g,S.b),br:S.br,dur:2.0,tr:'cut',fade:0.5});renSt()}
-function rmSt(i){steps.splice(i,1);renSt()}
-function mvSt(i,d){var j=i+d;if(j<0||j>=steps.length)return;var t=steps[i];steps[i]=steps[j];steps[j]=t;renSt()}
-function uSt(i,f,v){steps[i][f]=v}
-function togTr(i){steps[i].tr=steps[i].tr==='cut'?'fade':'cut';renSt()}
+function addSt(){steps.push({hex:r2h(S.r,S.g,S.b),br:S.br,dur:2.0,tr:'cut',fade:0.5});renSt();if(S.play)playP()}
+function rmSt(i){steps.splice(i,1);renSt();if(S.play&&steps.length)playP();else if(S.play)stopP()}
+function mvSt(i,d){var j=i+d;if(j<0||j>=steps.length)return;var t=steps[i];steps[i]=steps[j];steps[j]=t;renSt();if(S.play)playP()}
+function uSt(i,f,v){steps[i][f]=v;if(S.play)playP()}
+function togTr(i){steps[i].tr=steps[i].tr==='cut'?'fade':'cut';renSt();if(S.play)playP()}
 
 // Bulk edit
 function togBk(){var p=$('bkP');p.style.display=p.style.display==='none'?'flex':'none'}
