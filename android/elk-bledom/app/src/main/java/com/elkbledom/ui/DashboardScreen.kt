@@ -48,8 +48,21 @@ fun DashboardScreen(
     val discoveredDevices by deviceControl.discoveredDevices.collectAsState()
     val isScanning by deviceControl.isScanning.collectAsState()
     val target by deviceControl.target.collectAsState()
-    val playbackState by patternEngine.playbackState.collectAsState()
+    val localPlaybackState by patternEngine.playbackState.collectAsState()
     val bridgeStatusVal by deviceControl.bridgeStatus.collectAsState()
+
+    // In bridge mode, derive playback state from bridge /status
+    val playbackState = if (isBridgeMode && bridgeStatusVal != null) {
+        val bs = bridgeStatusVal!!
+        PlaybackState(
+            state = if (bs.playbackState != "idle") "playing" else "stopped",
+            currentStep = bs.playbackStep + 1,
+            totalSteps = bs.playbackTotal,
+            loop = bs.playbackLoop
+        )
+    } else {
+        localPlaybackState
+    }
     val stripRssiState by deviceControl.stripRssi.collectAsState()
     val bridgeStripNames by deviceControl.stripNames.collectAsState()
     val stripDeviceStates by deviceControl.stripDeviceStates.collectAsState()
@@ -319,6 +332,7 @@ fun DashboardScreen(
                 presetManager = presetManager,
                 playbackState = playbackState,
                 initialPreset = effectiveInitialPreset,
+                bridgeLoop = if (isBridgeMode && playbackState.state == "playing") playbackState.loop else null,
                 onPlay = { steps, loop, presetName ->
                     selectedEffect = ""
                     patternEngine.play(steps, loop, presetName)

@@ -33,13 +33,16 @@ fun PatternEditor(
     presetManager: PresetManager,
     playbackState: PlaybackState,
     initialPreset: String = "St. Patrick's Day",
+    bridgeLoop: Boolean? = null,
     onPlay: (List<PatternStep>, Boolean, String) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val allPresets by presetManager.allPresets.collectAsState()
     var selectedPreset by remember { mutableStateOf(initialPreset) }
-    var loop by remember { mutableStateOf(true) }
+    var localLoop by remember { mutableStateOf(true) }
+    // Bridge drives loop when available, otherwise use local state
+    val loop = bridgeLoop ?: localLoop
     var presetExpanded by remember { mutableStateOf(false) }
     val isPlaying = playbackState.state == "playing"
 
@@ -159,9 +162,9 @@ fun PatternEditor(
 
         Spacer(Modifier.height(6.dp))
 
-        // === Add Step + Bulk Edit ===
+        // === Add Step + Bulk Edit + Playback controls (single row) ===
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedButton(
@@ -171,19 +174,66 @@ fun PatternEditor(
                     brush = SolidColor(AccentColor)
                 ),
                 modifier = Modifier.height(30.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp)
+                contentPadding = PaddingValues(horizontal = 10.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(2.dp))
                 Text("Add Step", style = MaterialTheme.typography.labelSmall)
             }
-            TextButton(onClick = { showBulkEdit = !showBulkEdit }) {
+            TextButton(
+                onClick = { showBulkEdit = !showBulkEdit },
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) {
                 Text(
-                    if (showBulkEdit) "Hide Bulk Edit" else "Bulk Edit",
-                    color = Color.Gray,
+                    "Bulk Edit",
+                    color = if (showBulkEdit) AccentColor else Color.Gray,
                     style = MaterialTheme.typography.labelSmall
                 )
             }
+            Spacer(Modifier.weight(1f))
+            if (isPlaying) {
+                Button(
+                    onClick = onStop,
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
+                    modifier = Modifier.height(30.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp)
+                ) {
+                    Icon(Icons.Default.Stop, "Stop", modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Stop", style = MaterialTheme.typography.labelSmall)
+                }
+            } else {
+                Button(
+                    onClick = { if (steps.isNotEmpty()) onPlay(steps.toList(), loop, selectedPreset) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                    modifier = Modifier.height(30.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, "Play", modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Play", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            Text("Loop", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            if (isPlaying) {
+                Text(
+                    "${playbackState.currentStep}/${playbackState.totalSteps}",
+                    color = AccentColor,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+            Checkbox(
+                checked = loop,
+                onCheckedChange = { localLoop = it },
+                enabled = !isPlaying,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = AccentColor,
+                    uncheckedColor = Color.Gray,
+                    disabledCheckedColor = AccentColor.copy(alpha = 0.5f),
+                    disabledUncheckedColor = Color.Gray.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.size(28.dp)
+            )
         }
 
         AnimatedVisibility(visible = showBulkEdit) {
@@ -199,57 +249,6 @@ fun PatternEditor(
                     }
                 }
             )
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        // === Playback controls ===
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isPlaying) {
-                Button(
-                    onClick = onStop,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentColor),
-                    modifier = Modifier.height(34.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp)
-                ) {
-                    Icon(Icons.Default.Stop, "Stop", modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Stop", style = MaterialTheme.typography.labelMedium)
-                }
-            } else {
-                Button(
-                    onClick = { if (steps.isNotEmpty()) onPlay(steps.toList(), loop, selectedPreset) },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
-                    modifier = Modifier.height(34.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp)
-                ) {
-                    Icon(Icons.Default.PlayArrow, "Play", modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Play", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = loop,
-                    onCheckedChange = { loop = it },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = AccentColor,
-                        uncheckedColor = Color.Gray
-                    ),
-                    modifier = Modifier.size(30.dp)
-                )
-                Text("Loop", color = Color.White, style = MaterialTheme.typography.labelMedium)
-            }
-            if (isPlaying) {
-                Text(
-                    "${playbackState.currentStep}/${playbackState.totalSteps}",
-                    color = AccentColor,
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
         }
     }
 
