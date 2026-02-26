@@ -56,10 +56,13 @@ fun PatternEditor(
 
     // Sync from bridge when the playing preset changes
     LaunchedEffect(initialPreset) {
-        if (initialPreset.isNotEmpty() && initialPreset != selectedPreset && allPresets.containsKey(initialPreset)) {
+        if (initialPreset.isNotEmpty() && initialPreset != selectedPreset) {
             selectedPreset = initialPreset
-            steps.clear()
-            steps.addAll(allPresets[initialPreset] ?: emptyList())
+            // Only load steps if preset exists locally
+            if (allPresets.containsKey(initialPreset)) {
+                steps.clear()
+                steps.addAll(allPresets[initialPreset] ?: emptyList())
+            }
         }
     }
 

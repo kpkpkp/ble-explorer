@@ -149,45 +149,51 @@ class PatternEngine(
     }
 
     /**
-     * Start observing bridge playback state. If the bridge is already playing,
-     * reflect that in playbackState so the UI shows the correct state.
-     * Does NOT send any commands to the bridge.
+     * Continuously observe bridge playback state. Reflects bridge-side pattern
+     * playback (including patterns started from the web UI) into playbackState.
+     * Safe to overlap with play()'s own monitor — both write the same derived
+     * values and StateFlow deduplicates.
      */
     fun syncFromBridge() {
         if (deviceControl !is HttpBridgeClient) return
         _bridgeSyncJob?.cancel()
         _bridgeSyncJob = scope.launch {
-            // Wait for first status poll
-            var synced = false
-            while (isActive && !synced) {
+            // Wait for first non-null bridgeStatus
+            while (isActive && deviceControl.bridgeStatus.value == null) {
+                delay(250)
+            }
+            var wasPlaying = false
+            // Continuous monitoring loop
+            while (isActive) {
                 val status = deviceControl.bridgeStatus.value
                 if (status != null) {
-                    if (status.playbackState != "idle") {
+                    val playing = status.playbackState != "idle"
+                    if (playing) {
                         _playbackState.value = PlaybackState(
                             state = "playing",
                             currentStep = status.playbackStep,
                             totalSteps = status.playbackTotal,
                             loop = status.playbackLoop
                         )
-                        // Continue monitoring until stopped
-                        while (isActive) {
-                            delay(500)
-                            val s = deviceControl.bridgeStatus.value ?: break
-                            _playbackState.value = _playbackState.value.copy(
-                                state = if (s.playbackState == "idle") "stopped" else "playing",
-                                currentStep = s.playbackStep,
-                                totalSteps = s.playbackTotal,
-                                loop = s.playbackLoop
-                            )
-                            if (s.playbackState == "idle") break
+                        if (status.presetName.isNotEmpty()) {
+                            _lastPresetName = status.presetName
                         }
+                        _lastLoop = status.playbackLoop
+                    } else if (wasPlaying) {
+                        // Transition from playing → idle
+                        _playbackState.value = _playbackState.value.copy(
+                            state = "stopped",
+                            currentStep = 0
+                        )
                     }
-                    synced = true
+                    wasPlaying = playing
                 }
                 delay(500)
             }
         }
     }
+
+    val lastPresetName: String get() = _lastPresetName
 
     fun observeBridgeRestarts(sessionState: SessionState) {
         if (deviceControl !is HttpBridgeClient) return

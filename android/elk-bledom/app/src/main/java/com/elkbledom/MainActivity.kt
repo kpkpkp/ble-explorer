@@ -27,6 +27,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "MainActivity"
 
@@ -79,8 +81,12 @@ class MainActivity : ComponentActivity() {
         if (controlMode == "bridge" && bridgeUrl != null) {
             Log.i(TAG, "Starting in BRIDGE mode -> $bridgeUrl")
             val bridge = HttpBridgeClient(bridgeUrl)
-            bridge.startPolling()
             deviceControl = bridge
+            // Seed state before UI renders (~100ms on LAN, 2s max)
+            runBlocking(Dispatchers.IO) {
+                withTimeoutOrNull(2000L) { bridge.fetchInitialStatus() }
+            }
+            bridge.startPolling()
             // No BLE permissions needed in bridge mode
         } else {
             val mgr = BleManager(this)

@@ -73,7 +73,19 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
         statusPollJob = null
     }
 
-    private fun pollStatus() {
+    suspend fun fetchInitialStatus(): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                pollStatus()
+                _bridgeStatus.value != null
+            } catch (e: Exception) {
+                Log.w(TAG, "Initial status fetch failed: ${e.message}")
+                false
+            }
+        }
+    }
+
+    internal fun pollStatus() {
         val response = get("/status") ?: return
         val data = response.optJSONObject("data") ?: return
 
