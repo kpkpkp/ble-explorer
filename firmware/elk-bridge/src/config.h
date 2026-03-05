@@ -21,7 +21,7 @@
 
 // --- Pattern engine ---
 #define PATTERN_MAX_STEPS       32
-#define FADE_INTERVAL_MS        33
+#define FADE_INTERVAL_MS        50
 
 // --- Device identification ---
 #define DEVICE_NAME_PREFIX      "ELK-BLEDOM"

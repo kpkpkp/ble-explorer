@@ -62,6 +62,7 @@ public:
     bool connect(const char* address, uint8_t addrType = 0);
     bool disconnect(const char* address);
     bool write(const uint8_t* cmd, const char* target = "all");
+    bool writeSingle(const uint8_t* cmd, const char* target = "all");
     bool scan(std::vector<ScanResult>& results);
     void loop();
 

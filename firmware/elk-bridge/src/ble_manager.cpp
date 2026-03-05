@@ -203,6 +203,40 @@ bool BleManager::write(const uint8_t* cmd, const char* target) {
     return success;
 }
 
+// Single-write variant for fade interpolation (no retry, no delay)
+bool BleManager::writeSingle(const uint8_t* cmd, const char* target) {
+    if (!target) target = "all";
+    bool success = false;
+
+    auto writeSingle = [](BleStrip& strip, const uint8_t* cmd) -> bool {
+        if (strip.state != BleStrip::READY || !strip.writeChar) return false;
+        if (!strip.client || !strip.client->isConnected()) {
+            strip.state = BleStrip::LOST;
+            return false;
+        }
+        if (!strip.writeChar->writeValue(cmd, 9, false)) {
+            return false;
+        }
+        strip.lastSeen = millis();
+        return true;
+    };
+
+    if (strcmp(target, "all") == 0) {
+        for (auto& strip : _strips) {
+            if (writeSingle(strip, cmd)) success = true;
+        }
+    } else if (strncmp(target, "strip", 5) == 0) {
+        int idx = atoi(target + 5) - 1;
+        if (idx >= 0 && idx < (int)_strips.size()) {
+            success = writeSingle(_strips[idx], cmd);
+        }
+    } else {
+        int idx = findStrip(target);
+        if (idx >= 0) success = writeSingle(_strips[idx], cmd);
+    }
+    return success;
+}
+
 bool BleManager::scan(std::vector<ScanResult>& results) {
     Serial.println("[BLE] Starting scan...");
     results.clear();

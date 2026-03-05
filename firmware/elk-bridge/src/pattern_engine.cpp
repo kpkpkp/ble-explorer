@@ -56,6 +56,7 @@ void PatternEngine::play(PatternStep* steps, uint8_t count, bool loop, const cha
         _state = FADING;
         _fadeStartMs = millis();
         _lastFadeSend = 0;
+        _fadeBrSent = 255; // force first brightness send
     } else {
         _state = HOLD;
         _stepStartMs = millis();
@@ -138,7 +139,7 @@ void PatternEngine::tick(BleManager& ble) {
             uint8_t g  = lerp8(_prevG, _currG, t);
             uint8_t b  = lerp8(_prevB, _currB, t);
             uint8_t br = lerp8(_prevBr, _currBr, t);
-            sendColor(ble, r, g, b, br);
+            sendColorFade(ble, r, g, b, br);
             _lastFadeSend = now;
         }
 
@@ -164,11 +165,43 @@ void PatternEngine::startStep(BleManager& ble) {
         _state = FADING;
         _fadeStartMs = millis();
         _lastFadeSend = 0;
+        _fadeBrSent = 255; // force first brightness send
     } else {
         // CUT: send immediately, then hold
         _state = HOLD;
         _lastFadeSend = 0; // Signal initial send needed
         _stepStartMs = millis();
+    }
+}
+
+// Fast fade variant: single-write (no retry), skip brightness if unchanged
+void PatternEngine::sendColorFade(BleManager& ble, uint8_t r, uint8_t g, uint8_t b, uint8_t brightness) {
+    uint8_t cmd[9];
+
+    // Always send color
+    buildColorCmd(r, g, b, cmd);
+    ble.writeSingle(cmd, _target);
+
+    // Only send brightness if it actually changed
+    if (brightness != _fadeBrSent) {
+        uint8_t mappedBr = (uint8_t)((uint16_t)brightness * 255 / 100);
+        buildBrightnessCmd(mappedBr, cmd);
+        ble.writeSingle(cmd, _target);
+        _fadeBrSent = brightness;
+    }
+
+    // Update tracked strip state
+    for (size_t i = 0; i < ble.getStripCount(); i++) {
+        BleStrip* s = ble.getStrip(i);
+        if (!s || s->state != BleStrip::READY) continue;
+        if (strcmp(_target, "all") == 0 ||
+            (strcmp(_target, "strip1") == 0 && i == 0) ||
+            (strcmp(_target, "strip2") == 0 && i == 1) ||
+            (strcmp(_target, "strip3") == 0 && i == 2)) {
+            s->lastR = r; s->lastG = g; s->lastB = b;
+            s->lastBrightness = brightness;
+            s->mode = 2;
+        }
     }
 }
 

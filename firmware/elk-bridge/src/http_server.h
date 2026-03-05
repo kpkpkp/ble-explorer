@@ -56,4 +56,7 @@ private:
                    size_t index, uint8_t* data, size_t len, bool final);
     void handleOTAResponse(AsyncWebServerRequest* req);
     void handleOptions(AsyncWebServerRequest* req);
+    void handleGetPresets(AsyncWebServerRequest* req);
+    void handleSavePreset(AsyncWebServerRequest* req);
+    void handleDeletePreset(AsyncWebServerRequest* req);
 };

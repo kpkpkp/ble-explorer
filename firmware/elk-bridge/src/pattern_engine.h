@@ -77,7 +77,10 @@ private:
     // Current target color
     uint8_t     _currR = 0, _currG = 0, _currB = 0, _currBr = 0;
 
+    uint8_t     _fadeBrSent = 255;  // track brightness during fade to skip redundant writes
+
     void startStep(BleManager& ble);
     void sendColor(BleManager& ble, uint8_t r, uint8_t g, uint8_t b, uint8_t brightness);
+    void sendColorFade(BleManager& ble, uint8_t r, uint8_t g, uint8_t b, uint8_t brightness);
     uint8_t lerp8(uint8_t a, uint8_t b, float t);
 };

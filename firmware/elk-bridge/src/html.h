@@ -115,6 +115,8 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <select id="pSel"><option value="">-- Select Preset --</option></select>
 <button class="bac" onclick="playP()">&#9654;</button>
 <button class="bst" onclick="stopP()">&#9632;</button>
+<button class="bsm" onclick="saveP()" title="Save preset">&#128190;</button>
+<button class="bof" id="delBtn" onclick="delP()" title="Delete preset" style="display:none">&#128465;</button>
 </div>
 <div class="pr">
 <label style="margin:0;cursor:pointer"><input type="checkbox" id="lpCb" checked> Loop</label>
@@ -204,17 +206,70 @@ function fUp(s){var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+'h '+m
 // Build effect dropdown
 (function(){var s=$('fxS');FX.forEach(function(e){var o=document.createElement('option');o.value=e[1];o.textContent=e[0];s.appendChild(o)})})();
 
-// Build preset dropdown
+// Build preset dropdown (initial — rebuilt after user presets load)
 (function(){var s=$('pSel');Object.keys(P).forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o)})})();
 
 var steps=[];
+var UP={};
+
+function rebuildPresetDropdown(){
+var s=$('pSel');var cur=s.value;
+s.innerHTML='<option value="">-- Select Preset --</option>';
+Object.keys(UP).forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent='\u2605 '+n;o.dataset.user='1';s.appendChild(o)});
+Object.keys(P).forEach(function(n){var o=document.createElement('option');o.value=n;o.textContent=n;s.appendChild(o)});
+s.value=cur;
+}
+
+function loadUserPresets(){
+get('/api/presets').then(function(j){
+if(!j||!j.data)return;
+UP={};
+j.data.forEach(function(p){
+UP[p.name]=p.steps.map(function(s){
+return{hex:r2h(s.r,s.g,s.b),br:s.br,dur:s.dur/1000,tr:s.tr,fade:s.fade/1000}});
+});
+rebuildPresetDropdown();
+});
+}
+
+function saveP(){
+if(!steps.length){alert('No steps to save');return}
+var def=$('pSel').value||S.pn||'';
+var name=prompt('Preset name:',def);
+if(!name||!name.trim())return;
+name=name.trim();
+var api=steps.map(function(s){var rgb=h2r(s.hex);return{r:rgb[0],g:rgb[1],b:rgb[2],br:s.br,dur:Math.round(s.dur*1000),tr:s.tr,fade:Math.round(s.fade*1000)}});
+post('/api/presets',{name:name,steps:api}).then(function(j){
+if(j&&j.ok){UP[name]=steps.slice();rebuildPresetDropdown();$('pSel').value=name;updDelBtn()}
+else alert(j&&j.error||'Save failed');
+});
+}
+
+function delP(){
+var n=$('pSel').value;
+if(!n||!UP[n])return;
+if(!confirm('Delete "'+n+'"?'))return;
+fetch('/api/presets',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}).then(function(r){return r.json()}).then(function(j){
+if(j&&j.ok){delete UP[n];rebuildPresetDropdown();$('pSel').value='';updDelBtn()}
+});
+}
+
+function updDelBtn(){
+var n=$('pSel').value;
+$('delBtn').style.display=(n&&UP[n])?'inline-block':'none';
+}
+
+loadUserPresets();
 
 // Dropdown interaction gating + load preset into editor
 $('pSel').addEventListener('focus',function(){S._dPr=1});
 $('pSel').addEventListener('change',function(){
 S._dPr=1;
 var n=this.value;
-if(n&&P[n]){steps=P[n].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});renSt();if(S.play)playP()}
+updDelBtn();
+var src=UP[n]||null;
+if(!src&&P[n])src=P[n].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});
+if(src){steps=src.map(function(s){return{hex:s.hex,br:s.br,dur:s.dur,tr:s.tr,fade:s.fade}});renSt();if(S.play)playP()}
 });
 $('fxS').addEventListener('focus',function(){S._dFx=1});
 $('fxS').addEventListener('change',function(){S._dFx=1});

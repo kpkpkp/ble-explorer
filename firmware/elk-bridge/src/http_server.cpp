@@ -139,6 +139,31 @@ void HttpServer::begin() {
         handleDevices(req);
     });
 
+    // User presets
+    _server.on("/api/presets", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleGetPresets(req);
+    });
+
+    _server.on("/api/presets", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        handleSavePreset(req);
+    }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (index == 0) req->_tempObject = malloc(total + 1);
+        if (req->_tempObject) {
+            memcpy((uint8_t*)req->_tempObject + index, data, len);
+            if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
+        }
+    });
+
+    _server.on("/api/presets", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+        handleDeletePreset(req);
+    }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (index == 0) req->_tempObject = malloc(total + 1);
+        if (req->_tempObject) {
+            memcpy((uint8_t*)req->_tempObject + index, data, len);
+            if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
+        }
+    });
+
     _server.on("/api/config", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleConfig(req);
     }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
@@ -165,7 +190,7 @@ void HttpServer::begin() {
 
 void HttpServer::addCorsHeaders(AsyncWebServerResponse* response) {
     response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     response->addHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
@@ -519,6 +544,173 @@ void HttpServer::handleDevices(AsyncWebServerRequest* req) {
 
     data["count"] = (int)_ble.getStripCount();
     sendOk(req, doc);
+}
+
+// --- User Presets (NVS) ---
+// Keys: up0_n/up0_d .. up7_n/up7_d, up_cnt
+// Binary per-step: r(1) g(1) b(1) br(1) durMs(2 LE) tr(1) fadeMs(2 LE) = 9 bytes
+
+#define USER_PRESET_MAX 8
+
+void HttpServer::handleGetPresets(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    JsonArray arr = doc["data"].to<JsonArray>();
+
+    uint8_t count = _prefs.getUChar("up_cnt", 0);
+    for (uint8_t i = 0; i < count && i < USER_PRESET_MAX; i++) {
+        char nk[8], dk[8];
+        snprintf(nk, sizeof(nk), "up%d_n", i);
+        snprintf(dk, sizeof(dk), "up%d_d", i);
+
+        String name = _prefs.getString(nk, "");
+        if (name.length() == 0) continue;
+
+        uint8_t buf[512];
+        size_t len = _prefs.getBytes(dk, buf, sizeof(buf));
+        if (len < 1) continue;
+
+        uint8_t stepCount = buf[0];
+        if (stepCount == 0 || 1 + stepCount * 9 > len) continue;
+
+        JsonObject preset = arr.add<JsonObject>();
+        preset["name"] = name;
+        JsonArray steps = preset["steps"].to<JsonArray>();
+
+        size_t pos = 1;
+        for (uint8_t s = 0; s < stepCount; s++) {
+            JsonObject step = steps.add<JsonObject>();
+            step["r"] = buf[pos]; step["g"] = buf[pos+1]; step["b"] = buf[pos+2];
+            step["br"] = buf[pos+3];
+            step["dur"] = (uint16_t)(buf[pos+4] | (buf[pos+5] << 8));
+            step["tr"] = buf[pos+6] ? "fade" : "cut";
+            step["fade"] = (uint16_t)(buf[pos+7] | (buf[pos+8] << 8));
+            pos += 9;
+        }
+    }
+
+    sendOk(req, doc);
+}
+
+void HttpServer::handleSavePreset(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    if (!parseBody(req, doc)) return;
+
+    if (!doc["name"].is<const char*>() || !doc["steps"].is<JsonArray>()) {
+        sendError(req, 400, "Missing name or steps");
+        return;
+    }
+
+    const char* name = doc["name"].as<const char*>();
+    JsonArray steps = doc["steps"].as<JsonArray>();
+    uint8_t stepCount = steps.size();
+
+    if (stepCount == 0 || stepCount > PATTERN_MAX_STEPS) {
+        sendError(req, 400, "Invalid step count");
+        return;
+    }
+
+    // Check if preset with this name already exists (overwrite)
+    uint8_t count = _prefs.getUChar("up_cnt", 0);
+    int slot = -1;
+    for (uint8_t i = 0; i < count && i < USER_PRESET_MAX; i++) {
+        char nk[8];
+        snprintf(nk, sizeof(nk), "up%d_n", i);
+        String existing = _prefs.getString(nk, "");
+        if (existing == name) { slot = i; break; }
+    }
+
+    if (slot < 0) {
+        if (count >= USER_PRESET_MAX) {
+            sendError(req, 400, "Max 8 user presets reached");
+            return;
+        }
+        slot = count;
+    }
+
+    // Encode binary
+    uint8_t buf[1 + PATTERN_MAX_STEPS * 9];
+    buf[0] = stepCount;
+    size_t pos = 1;
+    for (JsonObject s : steps) {
+        buf[pos++] = s["r"] | 0;
+        buf[pos++] = s["g"] | 0;
+        buf[pos++] = s["b"] | 0;
+        buf[pos++] = s["br"] | 0;
+        uint16_t dur = s["dur"] | 0;
+        buf[pos++] = dur & 0xFF;
+        buf[pos++] = (dur >> 8) & 0xFF;
+        const char* tr = s["tr"] | "cut";
+        buf[pos++] = (strcmp(tr, "fade") == 0) ? 1 : 0;
+        uint16_t fade = s["fade"] | 0;
+        buf[pos++] = fade & 0xFF;
+        buf[pos++] = (fade >> 8) & 0xFF;
+    }
+
+    char nk[8], dk[8];
+    snprintf(nk, sizeof(nk), "up%d_n", slot);
+    snprintf(dk, sizeof(dk), "up%d_d", slot);
+    _prefs.putString(nk, name);
+    _prefs.putBytes(dk, buf, pos);
+
+    if (slot >= count) {
+        _prefs.putUChar("up_cnt", slot + 1);
+    }
+
+    Serial.printf("[Presets] Saved '%s' (%d steps) to slot %d\n", name, stepCount, slot);
+    sendOk(req);
+}
+
+void HttpServer::handleDeletePreset(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    if (!parseBody(req, doc)) return;
+
+    if (!doc["name"].is<const char*>()) {
+        sendError(req, 400, "Missing name");
+        return;
+    }
+
+    const char* name = doc["name"].as<const char*>();
+    uint8_t count = _prefs.getUChar("up_cnt", 0);
+    int slot = -1;
+
+    for (uint8_t i = 0; i < count && i < USER_PRESET_MAX; i++) {
+        char nk[8];
+        snprintf(nk, sizeof(nk), "up%d_n", i);
+        String existing = _prefs.getString(nk, "");
+        if (existing == name) { slot = i; break; }
+    }
+
+    if (slot < 0) {
+        sendError(req, 404, "Preset not found");
+        return;
+    }
+
+    // Shift remaining presets down
+    for (uint8_t i = slot; i < count - 1; i++) {
+        char srcN[8], srcD[8], dstN[8], dstD[8];
+        snprintf(srcN, sizeof(srcN), "up%d_n", i + 1);
+        snprintf(srcD, sizeof(srcD), "up%d_d", i + 1);
+        snprintf(dstN, sizeof(dstN), "up%d_n", i);
+        snprintf(dstD, sizeof(dstD), "up%d_d", i);
+
+        String n = _prefs.getString(srcN, "");
+        _prefs.putString(dstN, n.c_str());
+
+        uint8_t buf[512];
+        size_t len = _prefs.getBytes(srcD, buf, sizeof(buf));
+        if (len > 0) _prefs.putBytes(dstD, buf, len);
+    }
+
+    // Remove last slot
+    char lastN[8], lastD[8];
+    snprintf(lastN, sizeof(lastN), "up%d_n", count - 1);
+    snprintf(lastD, sizeof(lastD), "up%d_d", count - 1);
+    _prefs.remove(lastN);
+    _prefs.remove(lastD);
+    _prefs.putUChar("up_cnt", count - 1);
+
+    Serial.printf("[Presets] Deleted '%s' from slot %d\n", name, slot);
+    sendOk(req);
 }
 
 void HttpServer::handleConfig(AsyncWebServerRequest* req) {
