@@ -75,6 +75,15 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 .bp{background:#0a0e27;border-radius:6px;padding:8px;margin:6px 0;display:none;flex-wrap:wrap;gap:8px;align-items:center;font-size:.78em}
 .bp input{width:46px;padding:3px;background:#16213e;color:#e0e0e0;border:1px solid #333;border-radius:3px;font-size:1em}
 .bp label{margin:0;color:#888;display:inline-flex;align-items:center;gap:3px}
+.sce{background:#0f1530;border-radius:6px;padding:6px;margin:4px 0;font-size:.78em}
+.sce .dg{display:flex;gap:2px;margin-bottom:4px}
+.sce .dg span{width:20px;height:20px;border-radius:3px;text-align:center;line-height:20px;font-size:.7em;cursor:pointer;background:#1a1a2e;color:#555;user-select:none}
+.sce .dg span.on{background:#e94560;color:#fff}
+.sce .tr{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sce .tr input[type=time]{padding:3px;background:#0a0e27;color:#e0e0e0;border:1px solid #333;border-radius:4px;font-size:.9em;font-family:monospace}
+.sce .tr select{padding:3px;background:#0a0e27;color:#e0e0e0;border:1px solid #333;border-radius:4px;font-size:.9em;max-width:110px}
+.sce .tr .sw-tog{padding:2px 6px;font-size:.8em;min-width:28px}
+.scs{font-size:.72em;color:#aaa;padding:2px 0}
 </style>
 </head>
 <body>
@@ -94,6 +103,17 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <button class="bsc" style="flex:1" id="scBtn" onclick="doScan()">Scan for Devices</button>
 </div>
 <div id="scR"></div>
+</div>
+</div>
+
+<div class="c">
+<h2 class="coll" id="scH" onclick="togSc()">Schedule <span id="scSum" style="font-weight:normal;font-size:.72em;color:#888"></span></h2>
+<div class="fold" id="scF">
+<div id="scTbl"></div>
+<div class="br" style="margin-top:6px">
+<button class="bsm" style="flex:1" onclick="addScE()">+ Add Rule</button>
+</div>
+<div style="font-size:.72em;margin-top:6px"><label style="color:#888">Timezone: </label><select id="tzSel" onchange="setTz(this.value)" style="font-size:1em;background:#222;color:#eee;border:1px solid #444;border-radius:4px;padding:2px 4px"><option value="EST5EDT,M3.2.0,M11.1.0">Eastern (ET)</option><option value="CST6CDT,M3.2.0,M11.1.0">Central (CT)</option><option value="MST7MDT,M3.2.0,M11.1.0" selected>Mountain (MT)</option><option value="PST8PDT,M3.2.0,M11.1.0">Pacific (PT)</option><option value="AST9ADT,M3.2.0,M11.1.0">Alaska (AKT)</option><option value="HST10">Hawaii (HT)</option><option value="UTC0">UTC</option></select></div><div id="scTime" style="font-size:.68em;color:#555;margin-top:4px"></div>
 </div>
 </div>
 
@@ -456,6 +476,8 @@ S.strips=d.ble.strips||[];
 S.fw=d.firmware;
 S.up=d.uptime;
 S.hp=d.freeHeap;
+if(d.tz){var s=$('tzSel');for(var i=0;i<s.options.length;i++){if(s.options[i].value===d.tz){s.selectedIndex=i;break}}}
+if(d.time)$('scTime').textContent='Bridge: '+d.time;
 S.play=d.pattern.playing;
 S.pn=d.pattern.presetName||'';
 S.lp=d.pattern.loop;
@@ -508,6 +530,102 @@ return '<div class="dev"><span>'+d.name+' ('+d.rssi+'dBm)</span>'+
 
 function doCon(a){post('/api/connect',{address:a})}
 function doDis(a){post('/api/disconnect',{address:a})}
+
+// --- Schedule ---
+var SC=[];
+var scWday=-1;
+var DN=['S','M','T','W','T','F','S'];
+
+function togSc(){$('scH').classList.toggle('open');$('scF').classList.toggle('open')}
+function setTz(tz){post('/api/config',{tz:tz}).then(function(){setTimeout(loadSched,2000)})}
+
+function loadSched(){
+get('/api/schedule').then(function(j){
+if(!j||!j.data)return;
+SC=j.data.entries||[];
+scWday=j.data.wday>=0?j.data.wday:-1;
+if(j.data.time)$('scTime').textContent='Bridge: '+j.data.time;
+if(j.data.tz){var s=$('tzSel');for(var i=0;i<s.options.length;i++){if(s.options[i].value===j.data.tz){s.selectedIndex=i;break}}}
+renSc();
+renScSum();
+});
+}
+
+function renScSum(){
+if(scWday<0||!SC.length){$('scSum').textContent='';return}
+var today=SC.filter(function(e){return e.enabled&&(e.days&(1<<scWday))});
+if(!today.length){$('scSum').textContent='(no rules today)';return}
+$('scSum').textContent=today.map(function(e){
+return pad2(e.startHour)+':'+pad2(e.startMin)+'-'+pad2(e.endHour)+':'+pad2(e.endMin)+' '+(e.pattern==='*'?'Timer':e.pattern)
+}).join(', ');
+}
+
+function pad2(n){return n<10?'0'+n:''+n}
+
+function scPatOpts(){
+var opts='<option value="*">* (Timer)</option>';
+Object.keys(UP).forEach(function(n){opts+='<option value="'+n+'">\u2605 '+n+'</option>'});
+Object.keys(P).forEach(function(n){opts+='<option value="'+n+'">'+n+'</option>'});
+return opts;
+}
+
+function renSc(){
+var el=$('scTbl');
+if(!SC.length){el.innerHTML='<div style="color:#555;font-size:.78em;padding:6px;text-align:center">No rules</div>';return}
+el.innerHTML=SC.map(function(e,i){
+var dBtns=DN.map(function(d,di){return '<span class="'+(e.days&(1<<di)?'on':'')+'" onclick="togScDay('+i+','+di+')">'+d+'</span>'}).join('');
+return '<div class="sce">'+
+'<div class="dg">'+dBtns+'</div>'+
+'<div class="tr">'+
+'<input type="time" value="'+pad2(e.startHour)+':'+pad2(e.startMin)+'" onchange="uScTime('+i+',\'s\',this.value)">'+
+'<span style="color:#555">\u2192</span>'+
+'<input type="time" value="'+pad2(e.endHour)+':'+pad2(e.endMin)+'" onchange="uScTime('+i+',\'e\',this.value)">'+
+'<select onchange="uScPat('+i+',this.value)">'+scPatOpts().replace('value="'+e.pattern+'"','value="'+e.pattern+'" selected')+'</select>'+
+'<button class="bsm sw-tog '+(e.enabled?'bon':'')+'" onclick="togScEn('+i+')">'+(e.enabled?'ON':'OFF')+'</button>'+
+'<button class="bof" style="padding:2px 5px" onclick="delScE('+i+')">\u00D7</button>'+
+'</div></div>'
+}).join('');
+}
+
+function addScE(){
+var e={enabled:true,days:127,startHour:18,startMin:0,endHour:23,endMin:0,pattern:'*'};
+post('/api/schedule',e).then(function(j){if(j&&j.ok){SC.push(e);renSc();renScSum()}});
+}
+
+function delScE(i){
+fetch('/api/schedule',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:i})}).then(function(r){return r.json()}).then(function(j){
+if(j&&j.ok){SC.splice(i,1);renSc();renScSum()}
+});
+}
+
+function togScDay(i,d){
+SC[i].days^=(1<<d);
+saveScE(i,true);
+}
+
+function togScEn(i){
+SC[i].enabled=!SC[i].enabled;
+saveScE(i,true);
+}
+
+function uScTime(i,which,v){
+var p=v.split(':');
+if(which==='s'){SC[i].startHour=+p[0];SC[i].startMin=+p[1]}
+else{SC[i].endHour=+p[0];SC[i].endMin=+p[1]}
+saveScE(i,false);
+}
+
+function uScPat(i,v){
+SC[i].pattern=v;
+saveScE(i,false);
+}
+
+function saveScE(i,rerender){
+var e={enabled:SC[i].enabled,days:SC[i].days,startHour:SC[i].startHour,startMin:SC[i].startMin,endHour:SC[i].endHour,endMin:SC[i].endMin,pattern:SC[i].pattern,index:i};
+post('/api/schedule',e).then(function(){if(rerender)renSc();renScSum()});
+}
+
+loadSched();
 
 poll();
 setInterval(poll,1000);

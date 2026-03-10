@@ -1,8 +1,10 @@
 #include "pattern_engine.h"
 #include "elk_protocol.h"
+#include "color_cal.h"
 
-void PatternEngine::begin(Preferences& prefs) {
+void PatternEngine::begin(Preferences& prefs, ColorCal* cal) {
     _prefs = &prefs;
+    _cal = cal;
 }
 
 void PatternEngine::play(PatternStep* steps, uint8_t count, bool loop, const char* target, const char* presetName) {
@@ -178,8 +180,14 @@ void PatternEngine::startStep(BleManager& ble) {
 void PatternEngine::sendColorFade(BleManager& ble, uint8_t r, uint8_t g, uint8_t b, uint8_t brightness) {
     uint8_t cmd[9];
 
-    // Always send color
-    buildColorCmd(r, g, b, cmd);
+    // Apply calibration if available
+    uint8_t cr = r, cg = g, cb = b;
+    if (_cal) {
+        _cal->apply(r, g, b, brightness, cr, cg, cb);
+    }
+
+    // Always send calibrated color
+    buildColorCmd(cr, cg, cb, cmd);
     ble.writeSingle(cmd, _target);
 
     // Only send brightness if it actually changed
@@ -208,8 +216,14 @@ void PatternEngine::sendColorFade(BleManager& ble, uint8_t r, uint8_t g, uint8_t
 void PatternEngine::sendColor(BleManager& ble, uint8_t r, uint8_t g, uint8_t b, uint8_t brightness) {
     uint8_t cmd[9];
 
-    // Send color command
-    buildColorCmd(r, g, b, cmd);
+    // Apply calibration if available
+    uint8_t cr = r, cg = g, cb = b;
+    if (_cal) {
+        _cal->apply(r, g, b, brightness, cr, cg, cb);
+    }
+
+    // Send calibrated color command
+    buildColorCmd(cr, cg, cb, cmd);
     ble.write(cmd, _target);
 
     // Send brightness command (map 0-100 to 0-255)

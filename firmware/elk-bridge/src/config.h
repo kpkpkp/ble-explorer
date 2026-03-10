@@ -31,6 +31,9 @@
 #define BRIDGE_MDNS_NAME        "esp32-stringlights"
 #define BRIDGE_AP_PREFIX        "StringLights-"
 
+// --- Timezone ---
+#define DEFAULT_TZ              "MST7MDT,M3.2.0,M11.1.0"  // Denver, CO (Mountain)
+
 // --- HTTP server ---
 #define HTTP_PORT               80
 

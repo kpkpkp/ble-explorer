@@ -10,14 +10,17 @@
 #include "ble_manager.h"
 #include "command_dispatch.h"
 #include "pattern_engine.h"
+#include "scheduler.h"
+#include "color_cal.h"
 
 class HttpServer {
 public:
     HttpServer(WiFiManager& wifi, BleManager& ble,
                CommandDispatcher& dispatcher, PatternEngine& pattern,
-               Preferences& prefs)
+               Preferences& prefs, Scheduler& scheduler, ColorCal& cal)
         : _wifi(wifi), _ble(ble), _dispatcher(dispatcher),
-          _pattern(pattern), _prefs(prefs), _server(HTTP_PORT) {}
+          _pattern(pattern), _prefs(prefs), _scheduler(scheduler),
+          _cal(cal), _server(HTTP_PORT) {}
 
     void begin();
 
@@ -27,6 +30,8 @@ private:
     CommandDispatcher&  _dispatcher;
     PatternEngine&     _pattern;
     Preferences&       _prefs;
+    Scheduler&         _scheduler;
+    ColorCal&          _cal;
     AsyncWebServer     _server;
 
     void addCorsHeaders(AsyncWebServerResponse* response);
@@ -59,4 +64,10 @@ private:
     void handleGetPresets(AsyncWebServerRequest* req);
     void handleSavePreset(AsyncWebServerRequest* req);
     void handleDeletePreset(AsyncWebServerRequest* req);
+    void handleGetSchedule(AsyncWebServerRequest* req);
+    void handleSaveSchedule(AsyncWebServerRequest* req);
+    void handleDeleteSchedule(AsyncWebServerRequest* req);
+    void handleGetCalibration(AsyncWebServerRequest* req);
+    void handlePostCalibration(AsyncWebServerRequest* req);
+    void handleDeleteCalibration(AsyncWebServerRequest* req);
 };

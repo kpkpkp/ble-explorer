@@ -8,18 +8,18 @@
 │                                                                          │
 │   Android App (Kotlin/Compose)          Web Dashboard (Vanilla JS)       │
 │   ┌────────────────────────┐            ┌─────────────────────────┐      │
-│   │  DashboardScreen       │            │  Embedded in firmware    │      │
-│   │  PatternEditor         │            │  PROGMEM (13KB)          │      │
-│   │  ColorPicker           │            │  Polls /status @ 1s      │      │
-│   │  SettingsScreen        │            │  16 color swatches       │      │
-│   │  CalibrationWizard     │            │  27 effects, 11 presets  │      │
+│   │  DashboardScreen       │            │  Embedded in firmware   │      │
+│   │  PatternEditor         │            │  PROGMEM (13KB)         │      │
+│   │  ColorPicker           │            │  Polls /status @ 1s     │      │
+│   │  SettingsScreen        │            │  16 color swatches      │      │
+│   │  CalibrationWizard     │            │  27 effects, 11 presets │      │
 │   └────────┬───────────────┘            └───────────┬─────────────┘      │
 │            │                                        │                    │
 │     ┌──────┴──────┐                                 │                    │
 │     │DeviceControl│ interface                       │                    │
 │     ├─────────────┤                                 │                    │
-│     │ BLE direct  │ HttpBridge │                    │                    │
-│     └──┬──────────┴─────┬─────┘                    │                    │
+│     │ BLE direct  │ HttpBridge│                     │                    │
+│     └──┬──────────┴─────┬─────┘                     │                    │
 │        │                │                           │                    │
 └────────┼────────────────┼───────────────────────────┼────────────────────┘
          │                │                           │
@@ -27,42 +27,42 @@
     (direct)         (WiFi)                      (WiFi)
          │                │                           │
          │                ▼                           ▼
-         │    ┌───────────────────────────────────────────────┐
-         │    │              ESP32-C3 BRIDGE                   │
-         │    │                                               │
-         │    │  ┌──────────┐  ┌───────────────────────────┐  │
-         │    │  │WiFiManager│  │    ESPAsyncWebServer      │  │
-         │    │  │ STA/AP    │  │    15 REST endpoints      │  │
-         │    │  │ mDNS      │  │    JSON request/response  │  │
-         │    │  │ UDP beacon│  │    CORS enabled            │  │
-         │    │  └──────────┘  └──────────┬────────────────┘  │
-         │    │                           │                    │
-         │    │                ┌──────────▼────────────────┐   │
+         │    ┌─────────────────────────────────────────────────┐
+         │    │              ESP32-C3 BRIDGE                    │
+         │    │                                                 │
+         │    │  ┌───────────┐  ┌──────────────────────────┐    │
+         │    │  │WiFiManager│  │    ESPAsyncWebServer     │    │
+         │    │  │ STA/AP    │  │    15 REST endpoints     │    │
+         │    │  │ mDNS      │  │    JSON request/response │    │
+         │    │  │ UDP beacon│  │    CORS enabled          │    │
+         │    │  └───────────┘  └─────────┬────────────────┘    │
+         │    │                           │                     │
+         │    │                ┌──────────▼─────────────────┐   │
          │    │                │   CommandDispatcher        │   │
          │    │                │   JSON → 9-byte frames     │   │
-         │    │                │   State tracking per strip  │   │
-         │    │                └──────────┬────────────────┘   │
-         │    │                           │                    │
-         │    │  ┌──────────┐  ┌──────────▼────────────────┐   │
+         │    │                │   State tracking per strip │   │
+         │    │                └──────────┬─────────────────┘   │
+         │    │                           │                     │
+         │    │  ┌───────────┐  ┌─────────▼─────────────────┐   │
          │    │  │  Pattern  │  │     BLE Manager           │   │
          │    │  │  Engine   ├──►     (NimBLE client)       │   │
          │    │  │  millis() │  │     Max 3 connections     │   │
          │    │  │  ~30fps   │  │     Auto-reconnect        │   │
-         │    │  └──────────┘  └──────────┬────────────────┘   │
-         │    │                           │                    │
-         │    │  ┌──────────┐             │                    │
-         │    │  │StatusLed │  GPIO8      │                    │
-         │    │  │(blue LED)│             │                    │
-         │    │  └──────────┘             │                    │
-         │    └───────────────────────────┼────────────────────┘
-         │                                │
-         │           BLE 5.0 GATT         │
-         │           WRITE_NO_RESPONSE    │
-         │           9-byte frames × 2    │
-         │                                │
-         ▼                                ▼
+         │    │  └───────────┘  └──────────┬────────────────┘   │
+         │    │                            │                    │
+         │    │  ┌──────────┐              │                    │
+         │    │  │StatusLed │  GPIO8       │                    │
+         │    │  │(blue LED)│              │                    │
+         │    │  └──────────┘              │                    │
+         │    └────────────────────────────┼────────────────────┘
+         │                                 │
+         │           BLE 5.0 GATT          │
+         │           WRITE_NO_RESPONSE     │
+         │           9-byte frames × 2     │
+         │                                 │
+         ▼                                 ▼
     ┌──────────────────────────────────────────┐
-    │           ELK-BLEDOM LED STRIPS           │
+    │           ELK-BLEDOM LED STRIPS          │
     │                                          │
     │  Service: 0xFFF0                         │
     │  Write:   0xFFF3 (no response)           │

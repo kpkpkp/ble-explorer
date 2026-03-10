@@ -10,21 +10,26 @@
 
 #include <Preferences.h>
 
+#include <time.h>
 #include "config.h"
 #include "wifi_manager.h"
 #include "ble_manager.h"
 #include "pattern_engine.h"
 #include "command_dispatch.h"
+#include "color_cal.h"
 #include "http_server.h"
 #include "status_led.h"
+#include "scheduler.h"
 
 // --- Global instances ---
 WiFiManager       wifiManager;
 BleManager        bleManager;
 PatternEngine     patternEngine;
-CommandDispatcher dispatcher(bleManager, patternEngine);
+ColorCal          colorCal;
+CommandDispatcher dispatcher(bleManager, patternEngine, colorCal);
 Preferences       prefs;
-HttpServer        httpServer(wifiManager, bleManager, dispatcher, patternEngine, prefs);
+Scheduler         scheduler;
+HttpServer        httpServer(wifiManager, bleManager, dispatcher, patternEngine, prefs, scheduler, colorCal);
 StatusLed         statusLed;
 String            bootStrip2;  // deferred strip2 connect address
 uint32_t          lastHeapLog = 0;
@@ -62,11 +67,24 @@ void setup() {
         statusLed.setPattern(StatusLed::DOUBLE_BLINK);
     }
 
+    // --- Timezone + NTP ---
+    String tz = prefs.getString("tz_string", DEFAULT_TZ);
+    setenv("TZ", tz.c_str(), 1);
+    tzset();
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    Serial.printf("[NTP] TZ=%s, syncing...\n", tz.c_str());
+
+    // --- Scheduler ---
+    scheduler.begin(prefs);
+
     // --- BLE ---
     bleManager.init();
 
-    // --- Pattern engine (needs NVS reference) ---
-    patternEngine.begin(prefs);
+    // --- Color calibration ---
+    colorCal.begin(prefs);
+
+    // --- Pattern engine (needs NVS + calibration) ---
+    patternEngine.begin(prefs, &colorCal);
 
     // --- HTTP server (start BEFORE BLE connects to stay reachable) ---
     httpServer.begin();
@@ -94,6 +112,7 @@ void loop() {
     wifiManager.loop();
     patternEngine.tick(bleManager);
     bleManager.loop();
+    scheduler.tick(bleManager, patternEngine);
 
     // Save BLE address to NVS after async connect completes
     if (bleManager.connectState() == BleManager::ASYNC_DONE) {

@@ -5,6 +5,8 @@
 #include "config.h"
 #include "ble_manager.h"
 
+class ColorCal;  // forward declaration
+
 struct PatternStep {
     uint8_t  r;
     uint8_t  g;
@@ -23,7 +25,7 @@ public:
         FADING
     };
 
-    void begin(Preferences& prefs);
+    void begin(Preferences& prefs, ColorCal* cal = nullptr);
     void play(PatternStep* steps, uint8_t count, bool loop, const char* target = "all", const char* presetName = "");
     void stop();
     void tick(BleManager& ble);
@@ -59,7 +61,8 @@ public:
 
 private:
     Preferences* _prefs = nullptr;
-    BleManager*  _ble = nullptr;  // for updating strip state during playback
+    BleManager*  _ble = nullptr;
+    ColorCal*    _cal = nullptr;
     PatternStep _steps[PATTERN_MAX_STEPS];
     uint8_t     _stepCount = 0;
     uint8_t     _currentStep = 0;

@@ -1,5 +1,8 @@
 package com.elkbledom.control
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -15,13 +18,30 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 
-class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
+class HttpBridgeClient(private val baseUrl: String, context: Context? = null) : DeviceControl {
     private val TAG = "HttpBridge"
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
+    private val client: OkHttpClient
+
+    init {
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+
+        // Bind to WiFi network to bypass VPN tunnels
+        if (context != null) {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val wifiNetwork = cm.allNetworks.firstOrNull { net ->
+                cm.getNetworkCapabilities(net)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            }
+            if (wifiNetwork != null) {
+                builder.socketFactory(wifiNetwork.socketFactory)
+                Log.i(TAG, "Bound OkHttp to WiFi network")
+            }
+        }
+
+        client = builder.build()
+    }
     private val JSON_TYPE = "application/json".toMediaType()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -274,11 +294,33 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
     }
 
     override suspend fun sendColorSuspend(r: Int, g: Int, b: Int) {
-        sendColor(r, g, b)
+        withContext(Dispatchers.IO) {
+            try {
+                val json = JSONObject()
+                    .put("r", r).put("g", g).put("b", b)
+                    .put("target", targetString())
+                val body = json.toString().toRequestBody(JSON_TYPE)
+                val request = Request.Builder().url("$baseUrl/api/color").post(body).build()
+                client.newCall(request).execute().close()
+            } catch (e: Exception) {
+                Log.e(TAG, "sendColorSuspend failed: ${e.message}")
+            }
+        }
     }
 
     override suspend fun sendBrightnessSuspend(level: Int) {
-        sendBrightness(level)
+        withContext(Dispatchers.IO) {
+            try {
+                val json = JSONObject()
+                    .put("level", level)
+                    .put("target", targetString())
+                val body = json.toString().toRequestBody(JSON_TYPE)
+                val request = Request.Builder().url("$baseUrl/api/brightness").post(body).build()
+                client.newCall(request).execute().close()
+            } catch (e: Exception) {
+                Log.e(TAG, "sendBrightnessSuspend failed: ${e.message}")
+            }
+        }
     }
 
     override fun sendPattern(steps: List<PatternStepData>, loop: Boolean, name: String) {
@@ -339,4 +381,39 @@ class HttpBridgeClient(private val baseUrl: String) : DeviceControl {
             }
         }
     }
+
+    /**
+     * Upload calibration data to bridge so it can apply corrections server-side.
+     */
+    suspend fun syncCalibration(points: List<com.elkbledom.calibration.CalibrationPoint>): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val arr = JSONArray()
+                for (pt in points) {
+                    val obj = JSONObject()
+                    obj.put("deg", pt.deg.toInt())
+                    obj.put("brightness", pt.brightness)
+                    obj.put("standard", JSONArray(pt.standard.toList()))
+                    obj.put("strip_input", JSONArray(pt.stripInput.toList()))
+                    arr.put(obj)
+                }
+                val json = JSONObject()
+                json.put("points", arr)
+                json.put("enabled", true)
+
+                val body = json.toString().toRequestBody(JSON_TYPE)
+                val request = Request.Builder()
+                    .url("$baseUrl/api/calibration")
+                    .post(body)
+                    .build()
+                val response = client.newCall(request).execute()
+                val ok = response.isSuccessful
+                response.close()
+                Log.i(TAG, "Calibration sync: ${points.size} points, ok=$ok")
+                ok
+            } catch (e: Exception) {
+                Log.e(TAG, "Calibration sync failed: ${e.message}")
+                false
+            }
+        }
 }

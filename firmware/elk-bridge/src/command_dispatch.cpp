@@ -24,15 +24,38 @@ bool CommandDispatcher::handleColor(JsonObject doc, const char* target) {
     uint8_t g = doc["g"].as<uint8_t>();
     uint8_t b = doc["b"].as<uint8_t>();
 
-    // Intent color (pre-calibration) for state reporting
-    uint8_t ir = doc["ir"] | r;
-    uint8_t ig = doc["ig"] | g;
-    uint8_t ib = doc["ib"] | b;
+    // If caller already calibrated (app sends ir/ig/ib + calibrated r/g/b),
+    // skip bridge calibration. If no ir/ig/ib, caller sent raw — apply bridge cal.
+    bool callerCalibrated = doc["ir"].is<int>();
+    uint8_t ir, ig, ib;
+    uint8_t cr, cg, cb;
+
+    if (callerCalibrated) {
+        // App already calibrated: r,g,b are calibrated; ir,ig,ib are intent
+        ir = doc["ir"].as<uint8_t>();
+        ig = doc["ig"].as<uint8_t>();
+        ib = doc["ib"].as<uint8_t>();
+        cr = r; cg = g; cb = b;
+    } else {
+        // Raw color from web dashboard — apply bridge calibration
+        ir = r; ig = g; ib = b;
+        // Get current brightness for calibration lookup
+        uint8_t brPct = 100;
+        // Use first connected strip's brightness as reference
+        for (size_t i = 0; i < _ble.getStripCount(); i++) {
+            BleStrip* s = _ble.getStrip(i);
+            if (s && s->state == BleStrip::READY) {
+                brPct = s->lastBrightness;
+                break;
+            }
+        }
+        _cal.apply(r, g, b, brPct, cr, cg, cb);
+    }
 
     _pattern.stop();
 
     uint8_t cmd[9];
-    buildColorCmd(r, g, b, cmd);
+    buildColorCmd(cr, cg, cb, cmd);
     bool ok = _ble.write(cmd, target);
 
     if (ok) {
@@ -44,7 +67,8 @@ bool CommandDispatcher::handleColor(JsonObject doc, const char* target) {
         lastError = "BLE write failed";
     }
 
-    Serial.printf("[Cmd] Color: (%d, %d, %d) intent=(%d,%d,%d) -> %s = %s\n", r, g, b, ir, ig, ib, target, ok ? "ok" : "fail");
+    Serial.printf("[Cmd] Color: intent=(%d,%d,%d) cal=(%d,%d,%d) -> %s = %s\n",
+                  ir, ig, ib, cr, cg, cb, target, ok ? "ok" : "fail");
     return ok;
 }
 

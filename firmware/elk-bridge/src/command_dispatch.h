@@ -5,11 +5,12 @@
 #include <functional>
 #include "ble_manager.h"
 #include "pattern_engine.h"
+#include "color_cal.h"
 
 class CommandDispatcher {
 public:
-    CommandDispatcher(BleManager& ble, PatternEngine& pattern)
-        : _ble(ble), _pattern(pattern) {}
+    CommandDispatcher(BleManager& ble, PatternEngine& pattern, ColorCal& cal)
+        : _ble(ble), _pattern(pattern), _cal(cal) {}
 
     bool handleColor(JsonObject doc, const char* target);
     bool handleBrightness(JsonObject doc, const char* target);
@@ -28,6 +29,7 @@ public:
 private:
     BleManager&    _ble;
     PatternEngine& _pattern;
+    ColorCal&      _cal;
 
     void updateStrips(const char* target, std::function<void(BleStrip*)> fn);
     uint8_t hexCharToNibble(char c);

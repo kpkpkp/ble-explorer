@@ -1,5 +1,6 @@
 #include "http_server.h"
 #include "html.h"
+#include <time.h>
 
 void HttpServer::begin() {
     // CORS preflight handler for all routes
@@ -164,6 +165,31 @@ void HttpServer::begin() {
         }
     });
 
+    // Schedule
+    _server.on("/api/schedule", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleGetSchedule(req);
+    });
+
+    _server.on("/api/schedule", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        handleSaveSchedule(req);
+    }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (index == 0) req->_tempObject = malloc(total + 1);
+        if (req->_tempObject) {
+            memcpy((uint8_t*)req->_tempObject + index, data, len);
+            if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
+        }
+    });
+
+    _server.on("/api/schedule", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+        handleDeleteSchedule(req);
+    }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (index == 0) req->_tempObject = malloc(total + 1);
+        if (req->_tempObject) {
+            memcpy((uint8_t*)req->_tempObject + index, data, len);
+            if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
+        }
+    });
+
     _server.on("/api/config", HTTP_POST, [this](AsyncWebServerRequest* req) {
         handleConfig(req);
     }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
@@ -172,6 +198,23 @@ void HttpServer::begin() {
             memcpy((uint8_t*)req->_tempObject + index, data, len);
             if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
         }
+    });
+
+    // Calibration
+    _server.on("/api/calibration", HTTP_GET, [this](AsyncWebServerRequest* req) {
+        handleGetCalibration(req);
+    });
+    _server.on("/api/calibration", HTTP_POST, [this](AsyncWebServerRequest* req) {
+        handlePostCalibration(req);
+    }, NULL, [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+        if (index == 0) req->_tempObject = malloc(total + 1);
+        if (req->_tempObject) {
+            memcpy((uint8_t*)req->_tempObject + index, data, len);
+            if (index + len == total) ((char*)req->_tempObject)[total] = '\0';
+        }
+    });
+    _server.on("/api/calibration", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+        handleDeleteCalibration(req);
     });
 
     // OTA update
@@ -314,6 +357,25 @@ void HttpServer::handleStatus(AsyncWebServerRequest* req) {
     pattern["loop"] = _pattern.getLoop();
     pattern["presetName"] = _pattern.getPresetName();
     pattern["target"] = _pattern.getTarget();
+
+    // Calibration
+    JsonObject cal = data["calibration"].to<JsonObject>();
+    cal["enabled"] = _cal.enabled;
+    cal["points"] = _cal.getCount();
+
+    // Time
+    {
+        struct tm t;
+        time_t now = time(nullptr);
+        localtime_r(&now, &t);
+        if (t.tm_year > 100) {
+            char timeBuf[32];
+            strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &t);
+            data["time"] = timeBuf;
+            data["wday"] = t.tm_wday;
+        }
+        data["tz"] = _prefs.getString("tz_string", DEFAULT_TZ);
+    }
 
     // Firmware
     data["firmware"] = FIRMWARE_VERSION;
@@ -713,6 +775,89 @@ void HttpServer::handleDeletePreset(AsyncWebServerRequest* req) {
     sendOk(req);
 }
 
+// --- Schedule API ---
+
+void HttpServer::handleGetSchedule(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    JsonObject data = doc["data"].to<JsonObject>();
+    data["timeValid"] = _scheduler.isTimeValid();
+
+    // Report current time
+    struct tm t;
+    time_t now = time(nullptr);
+    localtime_r(&now, &t);
+    if (t.tm_year > 100) {
+        char buf[20];
+        snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d",
+                 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
+        data["time"] = buf;
+        data["wday"] = t.tm_wday;
+    }
+
+    JsonArray arr = data["entries"].to<JsonArray>();
+    for (uint8_t i = 0; i < _scheduler.getEntryCount(); i++) {
+        const ScheduleEntry* e = _scheduler.getEntry(i);
+        if (!e) continue;
+        JsonObject obj = arr.add<JsonObject>();
+        obj["enabled"] = e->enabled;
+        obj["days"] = e->days;
+        obj["startHour"] = e->startHour;
+        obj["startMin"] = e->startMin;
+        obj["endHour"] = e->endHour;
+        obj["endMin"] = e->endMin;
+        obj["pattern"] = e->pattern;
+    }
+    sendOk(req, doc);
+}
+
+void HttpServer::handleSaveSchedule(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    if (!parseBody(req, doc)) return;
+
+    ScheduleEntry entry;
+    entry.enabled   = doc["enabled"] | true;
+    entry.days      = doc["days"] | 0;
+    entry.startHour = doc["startHour"] | 0;
+    entry.startMin  = doc["startMin"] | 0;
+    entry.endHour   = doc["endHour"] | 0;
+    entry.endMin    = doc["endMin"] | 0;
+
+    const char* pat = doc["pattern"] | "*";
+    strncpy(entry.pattern, pat, sizeof(entry.pattern) - 1);
+    entry.pattern[sizeof(entry.pattern) - 1] = '\0';
+
+    if (doc["index"].is<int>()) {
+        int idx = doc["index"].as<int>();
+        if (!_scheduler.updateEntry(idx, entry)) {
+            sendError(req, 400, "Invalid index");
+            return;
+        }
+    } else {
+        if (!_scheduler.addEntry(entry)) {
+            sendError(req, 400, "Max 16 schedule entries reached");
+            return;
+        }
+    }
+    sendOk(req);
+}
+
+void HttpServer::handleDeleteSchedule(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    if (!parseBody(req, doc)) return;
+
+    if (!doc["index"].is<int>()) {
+        sendError(req, 400, "Missing index");
+        return;
+    }
+
+    int idx = doc["index"].as<int>();
+    if (!_scheduler.removeEntry(idx)) {
+        sendError(req, 404, "Entry not found");
+        return;
+    }
+    sendOk(req);
+}
+
 void HttpServer::handleConfig(AsyncWebServerRequest* req) {
     JsonDocument doc;
     if (!parseBody(req, doc)) return;
@@ -738,6 +883,17 @@ void HttpServer::handleConfig(AsyncWebServerRequest* req) {
     if (doc["strip2_addr"].is<const char*>()) {
         _prefs.putString("strip2_addr", doc["strip2_addr"].as<const char*>());
         needsReboot = true;
+        changed = true;
+    }
+
+    // Timezone (no reboot needed)
+    if (doc["tz"].is<const char*>()) {
+        const char* tz = doc["tz"].as<const char*>();
+        _prefs.putString("tz_string", tz);
+        setenv("TZ", tz, 1);
+        tzset();
+        configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+        Serial.printf("[Config] Timezone set to: %s\n", tz);
         changed = true;
     }
 
@@ -767,6 +923,82 @@ void HttpServer::handleConfig(AsyncWebServerRequest* req) {
         resp["data"]["message"] = "Config saved.";
         sendOk(req, resp);
     }
+}
+
+// --- Calibration ---
+
+void HttpServer::handleGetCalibration(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    doc["ok"] = true;
+    doc["data"]["enabled"] = _cal.enabled;
+    doc["data"]["count"] = _cal.getCount();
+
+    JsonArray arr = doc["data"]["points"].to<JsonArray>();
+    const CalPoint* pts = _cal.getPoints();
+    for (uint8_t i = 0; i < _cal.getCount(); i++) {
+        JsonObject pt = arr.add<JsonObject>();
+        pt["deg"] = pts[i].deg;
+        pt["brightness"] = pts[i].brightness;
+        JsonArray std = pt["standard"].to<JsonArray>();
+        std.add(pts[i].stdR); std.add(pts[i].stdG); std.add(pts[i].stdB);
+        JsonArray cal = pt["strip_input"].to<JsonArray>();
+        cal.add(pts[i].calR); cal.add(pts[i].calG); cal.add(pts[i].calB);
+    }
+
+    sendOk(req, doc);
+}
+
+void HttpServer::handlePostCalibration(AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    if (!parseBody(req, doc)) return;
+
+    if (!doc["points"].is<JsonArray>()) {
+        sendError(req, 400, "Missing points array");
+        return;
+    }
+
+    JsonArray arr = doc["points"].as<JsonArray>();
+    uint8_t count = arr.size();
+    if (count > CAL_MAX_POINTS) {
+        sendError(req, 400, "Too many points (max 120)");
+        return;
+    }
+
+    CalPoint pts[CAL_MAX_POINTS];
+    int i = 0;
+    for (JsonObject pt : arr) {
+        pts[i].deg = pt["deg"] | 0;
+        pts[i].brightness = pt["brightness"] | 100;
+        JsonArray std = pt["standard"].as<JsonArray>();
+        JsonArray cal = pt["strip_input"].as<JsonArray>();
+        if (std.size() >= 3 && cal.size() >= 3) {
+            pts[i].stdR = std[0]; pts[i].stdG = std[1]; pts[i].stdB = std[2];
+            pts[i].calR = cal[0]; pts[i].calG = cal[1]; pts[i].calB = cal[2];
+        }
+        i++;
+    }
+
+    if (!_cal.load(pts, count)) {
+        sendError(req, 400, "Failed to load calibration");
+        return;
+    }
+
+    if (doc["enabled"].is<bool>()) {
+        _cal.enabled = doc["enabled"].as<bool>();
+    }
+
+    _cal.saveToNVS();
+
+    JsonDocument resp;
+    resp["ok"] = true;
+    resp["data"]["message"] = "Calibration saved";
+    resp["data"]["count"] = count;
+    sendOk(req, resp);
+}
+
+void HttpServer::handleDeleteCalibration(AsyncWebServerRequest* req) {
+    _cal.clear();
+    sendOk(req);
 }
 
 void HttpServer::handleOTA(AsyncWebServerRequest* req, const String& filename,
