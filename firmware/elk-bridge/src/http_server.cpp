@@ -890,9 +890,9 @@ void HttpServer::handleConfig(AsyncWebServerRequest* req) {
     if (doc["tz"].is<const char*>()) {
         const char* tz = doc["tz"].as<const char*>();
         _prefs.putString("tz_string", tz);
+        configTime(0, 0, "pool.ntp.org", "time.nist.gov");
         setenv("TZ", tz, 1);
         tzset();
-        configTime(0, 0, "pool.ntp.org", "time.nist.gov");
         Serial.printf("[Config] Timezone set to: %s\n", tz);
         changed = true;
     }

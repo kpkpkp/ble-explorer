@@ -68,10 +68,11 @@ void setup() {
     }
 
     // --- Timezone + NTP ---
+    // configTime() first — some ESP-IDF versions clobber TZ with "UTC0" internally
     String tz = prefs.getString("tz_string", DEFAULT_TZ);
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     setenv("TZ", tz.c_str(), 1);
     tzset();
-    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     Serial.printf("[NTP] TZ=%s, syncing...\n", tz.c_str());
 
     // --- Scheduler ---
