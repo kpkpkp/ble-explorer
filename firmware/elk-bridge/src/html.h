@@ -26,6 +26,7 @@ input[type=range]{width:100%;margin:3px 0;accent-color:#e94560;height:18px}
 .br{display:flex;gap:6px;flex-wrap:wrap}
 button{padding:8px 12px;border:none;border-radius:6px;font-size:.8em;cursor:pointer;font-weight:600;transition:opacity .15s}
 button:active{opacity:.7}
+button:disabled{opacity:.35;cursor:not-allowed}
 .bon{background:#4caf50;color:#fff}
 .bof{background:#f44336;color:#fff}
 .bac{background:#e94560;color:#fff}
@@ -92,7 +93,7 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <div class="c">
 <div class="sr"><span><span class="d dof" id="wD"></span>WiFi: <span id="wS">--</span></span><span id="wIP"></span></div>
 <div class="sr"><span id="sC"></span><span id="fV"></span></div>
-<div class="sr"><span>Uptime: <span id="ut">--</span></span><span id="hp"></span></div>
+<div class="sr"><span><span id="clk" style="font-family:monospace"></span> | Uptime: <span id="ut">--</span></span><span id="hp"></span></div>
 </div>
 
 <div class="c">
@@ -124,8 +125,8 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <button onclick="tgt('strip2')">STRIP 2</button>
 </div>
 <div class="br" style="margin-top:8px">
-<button class="bon" style="flex:1" onclick="pw(true)">ON</button>
-<button class="bof" style="flex:1" onclick="pw(false)">OFF</button>
+<button class="bon" style="flex:1" id="pwOn" onclick="pw(true)">ON</button>
+<button class="bof" style="flex:1" id="pwOff" onclick="pw(false)">OFF</button>
 </div>
 </div>
 
@@ -205,7 +206,8 @@ var P={
 "Christmas":['C30F16','165B33','F8B229','FFFFFF'],
 "Halloween":['FF9A00','F75F1C','000000','881EE4','85E21F'],
 "Mardi Gras":['880085','FFD700','00A651'],
-"Pride Rainbow":['E40303','FF8C00','FFED00','008026','004DFF','750787']};
+"Pride Rainbow":['E40303','FF8C00','FFED00','008026','004DFF','750787'],
+"Oscar Statue":[{hex:'D5BA6D',br:100,dur:5.0,tr:'fade',fade:1.0},{hex:'B69F66',br:100,dur:5.0,tr:'fade',fade:1.0},{hex:'EBAB47',br:100,dur:5.0,tr:'fade',fade:1.0}]};
 
 var S={tgt:'all',r:0,g:0,b:0,br:100,fx:135,spd:3,lp:true,play:false,
 pn:'',strips:[],wifi:{},fw:'',up:0,hp:0,pStep:0,pTot:0,
@@ -288,7 +290,7 @@ S._dPr=1;
 var n=this.value;
 updDelBtn();
 var src=UP[n]||null;
-if(!src&&P[n])src=P[n].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});
+if(!src&&P[n])src=P[n].map(function(h){return typeof h==='string'?{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
 if(src){steps=src.map(function(s){return{hex:s.hex,br:s.br,dur:s.dur,tr:s.tr,fade:s.fade}});renSt();if(S.play)playP()}
 });
 $('fxS').addEventListener('focus',function(){S._dFx=1});
@@ -477,7 +479,7 @@ S.fw=d.firmware;
 S.up=d.uptime;
 S.hp=d.freeHeap;
 if(d.tz){var s=$('tzSel');for(var i=0;i<s.options.length;i++){if(s.options[i].value===d.tz){s.selectedIndex=i;break}}}
-if(d.time)$('scTime').textContent='Bridge: '+d.time;
+if(d.time){$('scTime').textContent='Bridge: '+d.time;seedClk(d.time)}
 S.play=d.pattern.playing;
 S.pn=d.pattern.presetName||'';
 S.lp=d.pattern.loop;
@@ -486,7 +488,7 @@ S.pTot=d.pattern.totalSteps;
 
 // Auto-populate editor from running preset on page load
 if(S.play&&S.pn&&P[S.pn]&&!steps.length){
-steps=P[S.pn].map(function(h){return{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}});
+steps=P[S.pn].map(function(h){return typeof h==='string'?{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
 renSt();
 }
 
@@ -548,6 +550,7 @@ if(j.data.time)$('scTime').textContent='Bridge: '+j.data.time;
 if(j.data.tz){var s=$('tzSel');for(var i=0;i<s.options.length;i++){if(s.options[i].value===j.data.tz){s.selectedIndex=i;break}}}
 renSc();
 renScSum();
+guardPw();
 });
 }
 
@@ -623,6 +626,28 @@ saveScE(i,false);
 function saveScE(i,rerender){
 var e={enabled:SC[i].enabled,days:SC[i].days,startHour:SC[i].startHour,startMin:SC[i].startMin,endHour:SC[i].endHour,endMin:SC[i].endMin,pattern:SC[i].pattern,index:i};
 post('/api/schedule',e).then(function(){if(rerender)renSc();renScSum()});
+}
+
+// --- Live clock (seeded from bridge, ticked locally) ---
+var _clkBase=null,_clkAt=0;
+function seedClk(ts){
+var p=ts.split(/[- :]/);
+_clkBase=new Date(+p[0],+p[1]-1,+p[2],+p[3],+p[4],+p[5]||0);
+_clkAt=Date.now();
+}
+function tickClk(){
+if(!_clkBase)return;
+var d=new Date(_clkBase.getTime()+(Date.now()-_clkAt));
+$('clk').textContent=pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds());
+}
+setInterval(tickClk,1000);
+
+// --- Schedule-aware power button guard ---
+function guardPw(){
+var has=SC.some(function(e){return e.enabled&&e.pattern==='*'});
+$('pwOn').disabled=has;$('pwOff').disabled=has;
+$('pwOn').title=has?'Managed by schedule':'';
+$('pwOff').title=has?'Managed by schedule':'';
 }
 
 loadSched();
