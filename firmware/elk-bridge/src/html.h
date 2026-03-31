@@ -313,6 +313,20 @@ if(S.tgt==='strip2'&&S.strips.length>1)return S.strips[1];
 return S.strips[0];
 }
 
+var _favCvs=null;
+function updFav(){
+var st=rStrip();
+var on=st&&st.power&&(S.r||S.g||S.b);
+var el=document.querySelector('link[rel="icon"]');
+if(!on){if(el)el.remove();return}
+if(!_favCvs){_favCvs=document.createElement('canvas');_favCvs.width=16;_favCvs.height=16}
+var ctx=_favCvs.getContext('2d');
+ctx.fillStyle='rgb('+S.r+','+S.g+','+S.b+')';
+ctx.fillRect(0,0,16,16);
+if(!el){el=document.createElement('link');el.rel='icon';document.head.appendChild(el)}
+el.href=_favCvs.toDataURL('image/png');
+}
+
 function pw(on){post('/api/power',{on:on,target:S.tgt})}
 function stopP(){post('/api/stop',{target:S.tgt})}
 
@@ -467,6 +481,7 @@ return '<div class="dev"><span>'+nm+': '+s.address+' ['+s.state+']'+pw+'</span>'
 }else{
 dl.innerHTML='<div style="color:#555;font-size:.78em">No strips connected</div>';
 }
+updFav();
 }
 
 function poll(){
