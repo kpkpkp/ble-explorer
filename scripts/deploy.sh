@@ -79,6 +79,28 @@ UPTIME=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin
 HEAP=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('freeHeap','?'))" 2>/dev/null || echo "?")
 echo "Current firmware: v$CURRENT_VER  uptime: ${UPTIME}s  heap: $HEAP"
 
+# --- Backup presets and schedule ---
+BACKUP_DIR=$(mktemp -d)
+echo ""
+echo "=== Backing up presets and schedule ==="
+PRESETS=$(curl -s --connect-timeout 3 "http://$BRIDGE_HOST/api/presets" 2>/dev/null)
+if echo "$PRESETS" | grep -q '"ok":true'; then
+    echo "$PRESETS" > "$BACKUP_DIR/presets.json"
+    PRESET_COUNT=$(echo "$PRESETS" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null || echo "0")
+    echo "Presets: $PRESET_COUNT saved"
+else
+    echo "Presets: none or failed to read"
+fi
+
+SCHEDULE=$(curl -s --connect-timeout 3 "http://$BRIDGE_HOST/api/schedule" 2>/dev/null)
+if echo "$SCHEDULE" | grep -q '"ok":true'; then
+    echo "$SCHEDULE" > "$BACKUP_DIR/schedule.json"
+    SCHED_COUNT=$(echo "$SCHEDULE" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',{}).get('entries',[])))" 2>/dev/null || echo "0")
+    echo "Schedule: $SCHED_COUNT entries saved"
+else
+    echo "Schedule: none or failed to read"
+fi
+
 # --- Upload ---
 echo ""
 echo "=== Uploading firmware ($FW_SIZE bytes) ==="
@@ -97,6 +119,46 @@ if echo "$RESPONSE" | grep -q '"ok":true'; then
             NEW_VER=$(echo "$NEW_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('firmware','?'))" 2>/dev/null || echo "?")
             NEW_HEAP=$(echo "$NEW_STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('freeHeap','?'))" 2>/dev/null || echo "?")
             echo "Bridge is back! firmware=v$NEW_VER heap=$NEW_HEAP"
+
+            # --- Restore presets ---
+            if [ -f "$BACKUP_DIR/presets.json" ]; then
+                echo ""
+                echo "=== Restoring presets ==="
+                python3 -c "
+import sys, json, urllib.request
+presets = json.load(open('$BACKUP_DIR/presets.json')).get('data', [])
+for p in presets:
+    body = json.dumps(p).encode()
+    req = urllib.request.Request('http://$BRIDGE_HOST/api/presets',
+        data=body, headers={'Content-Type': 'application/json'})
+    try:
+        urllib.request.urlopen(req, timeout=5)
+        print(f'  Restored: {p[\"name\"]}')
+    except Exception as e:
+        print(f'  FAILED: {p[\"name\"]}: {e}')
+" 2>/dev/null || echo "  (restore failed, backup at $BACKUP_DIR/presets.json)"
+            fi
+
+            # --- Restore schedule ---
+            if [ -f "$BACKUP_DIR/schedule.json" ]; then
+                echo ""
+                echo "=== Restoring schedule ==="
+                python3 -c "
+import sys, json, urllib.request
+entries = json.load(open('$BACKUP_DIR/schedule.json')).get('data', {}).get('entries', [])
+for e in entries:
+    body = json.dumps(e).encode()
+    req = urllib.request.Request('http://$BRIDGE_HOST/api/schedule',
+        data=body, headers={'Content-Type': 'application/json'})
+    try:
+        urllib.request.urlopen(req, timeout=5)
+        print(f'  Restored: {e.get(\"pattern\",\"?\")} {e.get(\"startHour\",0):02d}:{e.get(\"startMin\",0):02d}-{e.get(\"endHour\",0):02d}:{e.get(\"endMin\",0):02d}')
+    except Exception as e2:
+        print(f'  FAILED: {e2}')
+" 2>/dev/null || echo "  (restore failed, backup at $BACKUP_DIR/schedule.json)"
+            fi
+
+            rm -rf "$BACKUP_DIR"
             exit 0
         fi
         echo -n "."
