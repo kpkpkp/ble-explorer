@@ -141,6 +141,10 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
                 uint8_t cmd[9];
                 buildPowerCmd(true, cmd);
                 ble.write(cmd, "all");
+                for (size_t s = 0; s < ble.getStripCount(); s++) {
+                    BleStrip* st = ble.getStrip(s);
+                    if (st) st->lastPower = true;
+                }
             } else {
                 // Named pattern — load and play
                 PatternStep steps[PATTERN_MAX_STEPS];
@@ -161,6 +165,10 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
                 uint8_t cmd[9];
                 buildPowerCmd(false, cmd);
                 ble.write(cmd, "all");
+                for (size_t s = 0; s < ble.getStripCount(); s++) {
+                    BleStrip* st = ble.getStrip(s);
+                    if (st) st->lastPower = false;
+                }
             } else {
                 // Stop pattern
                 pattern.stop();

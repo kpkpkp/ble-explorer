@@ -126,19 +126,9 @@ void loop() {
                 Serial.printf("[NVS] Saved %s as %s\n", addr.c_str(), key.c_str());
             }
 
-            // Affirm strip state: power on so commands are accepted
-            uint8_t powerOnCmd[9];
-            buildPowerCmd(true, powerOnCmd);
-            bleManager.write(powerOnCmd, addr.c_str());
-            Serial.printf("[Boot] Sent power-on to %s\n", addr.c_str());
-
-            // Re-kick saved pattern if one was loaded but strips weren't connected yet
-            if (patternEngine.isPlaying()) {
-                Serial.println("[Boot] Pattern already playing, strip will receive on next tick");
-            } else {
-                // Try restoring saved pattern now that a strip is connected
-                patternEngine.loadFromNVS(bleManager);
-            }
+            // Let scheduler re-evaluate and apply correct state on next tick
+            scheduler.forceCheck();
+            Serial.printf("[Boot] Strip connected, scheduler will re-apply state\n");
         }
         bleManager.clearConnectResult();
 

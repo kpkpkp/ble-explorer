@@ -36,6 +36,7 @@ public:
     void loadFromNVS();
 
     bool isTimeValid() const;
+    void forceCheck() { _activeFlags = 0; _lastCheck = 0; }
 
 private:
     Preferences*  _prefs = nullptr;
