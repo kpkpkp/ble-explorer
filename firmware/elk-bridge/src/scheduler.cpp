@@ -107,6 +107,22 @@ bool Scheduler::loadUserPreset(const char* name, PatternStep* steps, uint8_t& st
 
 void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
     if (_count == 0) return;
+
+    // Enforce power-off on reconnect even before NTP syncs —
+    // strips boot into default-on state and need immediate correction
+    if (_enforceState && !isTimeValid()) {
+        Serial.println("[Sched] Enforce: NTP not synced, powering off as precaution");
+        uint8_t cmd[9];
+        buildPowerCmd(false, cmd);
+        ble.write(cmd, "all");
+        for (size_t s = 0; s < ble.getStripCount(); s++) {
+            BleStrip* st = ble.getStrip(s);
+            if (st) st->lastPower = false;
+        }
+        _enforceState = false;
+        return;
+    }
+
     if (!isTimeValid()) return;
 
     uint32_t now = millis();
