@@ -59,6 +59,11 @@ val BUILTIN_PRESETS = linkedMapOf(
         PatternStep("#FFD700", 100, 2.0f, "cut", 0.5f),
         PatternStep("#00A651", 100, 2.0f, "cut", 0.5f),
     ),
+    "Oscar Statue" to listOf(
+        PatternStep("#D5BA6D", 100, 5.0f, "fade", 1.0f),
+        PatternStep("#B69F66", 100, 5.0f, "fade", 1.0f),
+        PatternStep("#EBAB47", 100, 5.0f, "fade", 1.0f),
+    ),
     "Pride Rainbow" to listOf(
         PatternStep("#E40303", 100, 2.0f, "cut", 0.5f),
         PatternStep("#FF8C00", 100, 2.0f, "cut", 0.5f),
