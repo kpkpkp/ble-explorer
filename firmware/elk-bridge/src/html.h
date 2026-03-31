@@ -33,6 +33,13 @@ button:disabled{opacity:.35;cursor:not-allowed}
 .bsc{background:#2196f3;color:#fff}
 .bst{background:#ff9800;color:#fff}
 .bsm{background:#0f3460;color:#e0e0e0;border:1px solid #333}
+.tog{position:relative;display:inline-block;width:50px;height:26px;flex-shrink:0}
+.tog input{opacity:0;width:0;height:0}
+.tsl{position:absolute;cursor:pointer;inset:0;background:#444;border-radius:26px;transition:.25s}
+.tsl:before{content:'';position:absolute;height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s}
+.tog input:checked+.tsl{background:#4caf50}
+.tog input:checked+.tsl:before{transform:translateX(24px)}
+.tog input:disabled+.tsl{opacity:.35;cursor:not-allowed}
 .tg{display:flex;gap:0}
 .tg button{flex:1;border-radius:0;background:#0f3460;color:#777;border:1px solid #333;padding:8px 4px;font-size:.78em}
 .tg button:first-child{border-radius:6px 0 0 6px}
@@ -119,14 +126,13 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 </div>
 
 <div class="c">
-<div class="tg" id="tg">
+<div style="display:flex;align-items:center;gap:8px">
+<label class="tog" id="pwTog"><input type="checkbox" id="pwCb" onchange="pw(this.checked)"><span class="tsl"></span></label>
+<div class="tg" id="tg" style="flex:1">
 <button class="act" onclick="tgt('all')">ALL</button>
 <button onclick="tgt('strip1')">STRIP 1</button>
 <button onclick="tgt('strip2')">STRIP 2</button>
 </div>
-<div class="br" style="margin-top:8px">
-<button class="bon" style="flex:1" id="pwOn" onclick="pw(true)">ON</button>
-<button class="bof" style="flex:1" id="pwOff" onclick="pw(false)">OFF</button>
 </div>
 </div>
 
@@ -455,6 +461,10 @@ if(!S._dB){$('bS').value=S.b;$('bV').textContent=S.b}
 if(!S._dBr){$('brS').value=S.br;$('brV').textContent=S.br}
 if(!S._dSp){$('spS').value=S.spd;$('spV').textContent=S.spd}
 
+var st0=rStrip();
+var pon=st0?st0.power:false;
+$('pwCb').checked=pon;
+
 uPrev();
 
 var ps=S.play?'Step '+(S.pStep+1)+'/'+S.pTot:'Idle';
@@ -482,6 +492,7 @@ return '<div class="dev"><span>'+nm+': '+s.address+' ['+s.state+']'+pw+'</span>'
 dl.innerHTML='<div style="color:#555;font-size:.78em">No strips connected</div>';
 }
 updFav();
+guardPw();
 }
 
 function poll(){
@@ -631,16 +642,28 @@ var p=v.split(':');
 if(which==='s'){SC[i].startHour=+p[0];SC[i].startMin=+p[1]}
 else{SC[i].endHour=+p[0];SC[i].endMin=+p[1]}
 saveScE(i,false);
+guardPw();
 }
 
 function uScPat(i,v){
 SC[i].pattern=v;
 saveScE(i,false);
+guardPw();
 }
 
 function saveScE(i,rerender){
 var e={enabled:SC[i].enabled,days:SC[i].days,startHour:SC[i].startHour,startMin:SC[i].startMin,endHour:SC[i].endHour,endMin:SC[i].endMin,pattern:SC[i].pattern,index:i};
-post('/api/schedule',e).then(function(){if(rerender)renSc();renScSum()});
+post('/api/schedule',e).then(function(){
+if(rerender)renSc();renScSum();
+// Resync clock from bridge to prevent drift during schedule editing
+get('/api/schedule').then(function(j){
+if(j&&j.data){
+if(j.data.time)seedClk(j.data.time);
+if(j.data.wday>=0)scWday=j.data.wday;
+guardPw();
+}
+});
+});
 }
 
 // --- Live clock (seeded from bridge, ticked locally) ---
@@ -659,10 +682,20 @@ setInterval(tickClk,1000);
 
 // --- Schedule-aware power button guard ---
 function guardPw(){
-var has=SC.some(function(e){return e.enabled&&e.pattern==='*'});
-$('pwOn').disabled=has;$('pwOff').disabled=has;
-$('pwOn').title=has?'Managed by schedule':'';
-$('pwOff').title=has?'Managed by schedule':'';
+var active=false;
+if(_clkBase&&scWday>=0){
+var d=new Date(_clkBase.getTime()+(Date.now()-_clkAt));
+var nm=d.getHours()*60+d.getMinutes();
+active=SC.some(function(e){
+if(!e.enabled)return false;
+if(!(e.days&(1<<scWday)))return false;
+var s=e.startHour*60+e.startMin,en=e.endHour*60+e.endMin;
+if(s<=en)return nm>=s&&nm<en;
+return nm>=s||nm<en;
+});
+}
+$('pwCb').disabled=active;
+$('pwTog').title=active?'Managed by schedule':'';
 }
 
 loadSched();

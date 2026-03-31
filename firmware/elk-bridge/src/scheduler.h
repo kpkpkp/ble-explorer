@@ -8,7 +8,7 @@
 #include "elk_protocol.h"
 
 #define SCHEDULE_MAX_ENTRIES 16
-#define SCHEDULE_CHECK_INTERVAL_MS 30000
+#define SCHEDULE_CHECK_INTERVAL_MS 2000
 
 struct ScheduleEntry {
     bool    enabled;
@@ -36,7 +36,7 @@ public:
     void loadFromNVS();
 
     bool isTimeValid() const;
-    void forceCheck() { _activeFlags = 0; _lastCheck = 0; }
+    void forceCheck() { _activeFlags = 0; _lastCheck = 0; _enforceState = true; }
 
 private:
     Preferences*  _prefs = nullptr;
@@ -44,6 +44,8 @@ private:
     uint8_t       _count = 0;
     uint32_t      _lastCheck = 0;
     uint16_t      _activeFlags = 0;   // bitmask: which entries were active last tick
+
+    bool _enforceState = false;
 
     bool isEntryActive(const ScheduleEntry& entry, struct tm& now) const;
     bool loadUserPreset(const char* name, PatternStep* steps, uint8_t& stepCount);

@@ -126,9 +126,10 @@ void loop() {
                 Serial.printf("[NVS] Saved %s as %s\n", addr.c_str(), key.c_str());
             }
 
-            // Let scheduler re-evaluate and apply correct state on next tick
+            // Re-evaluate and apply correct state immediately
             scheduler.forceCheck();
-            Serial.printf("[Boot] Strip connected, scheduler will re-apply state\n");
+            scheduler.tick(bleManager, patternEngine);
+            Serial.printf("[Boot] Strip connected, scheduler applied state\n");
         }
         bleManager.clearConnectResult();
 

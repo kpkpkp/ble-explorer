@@ -35,7 +35,7 @@ struct BleStrip {
     // Tracked device state (updated by CommandDispatcher + PatternEngine)
     uint8_t lastR = 0, lastG = 0, lastB = 0;   // user-intended (pre-calibration) color
     uint8_t lastBrightness = 100;               // 0-100
-    bool    lastPower = true;
+    bool    lastPower = false;
     uint8_t lastEffectCode = 0;                 // 0=none, 0x80-0x9A=active
     uint8_t lastEffectSpeed = 3;                // 1-10
     uint8_t lastWarm = 0, lastCold = 0;         // color temp

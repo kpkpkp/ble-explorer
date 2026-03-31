@@ -146,7 +146,14 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
                     if (st) st->lastPower = true;
                 }
             } else {
-                // Named pattern — load and play
+                // Named pattern — power on first, then load and play
+                uint8_t cmd[9];
+                buildPowerCmd(true, cmd);
+                ble.write(cmd, "all");
+                for (size_t s = 0; s < ble.getStripCount(); s++) {
+                    BleStrip* st = ble.getStrip(s);
+                    if (st) st->lastPower = true;
+                }
                 PatternStep steps[PATTERN_MAX_STEPS];
                 uint8_t stepCount = 0;
                 if (loadUserPreset(e.pattern, steps, stepCount)) {
@@ -170,11 +177,33 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
                     if (st) st->lastPower = false;
                 }
             } else {
-                // Stop pattern
+                // Stop pattern and power off
                 pattern.stop();
+                uint8_t cmd[9];
+                buildPowerCmd(false, cmd);
+                ble.write(cmd, "all");
+                for (size_t s = 0; s < ble.getStripCount(); s++) {
+                    BleStrip* st = ble.getStrip(s);
+                    if (st) st->lastPower = false;
+                }
             }
         }
     }
+
+    // After forceCheck: if nothing is active, enforce power off
+    // (strips may have booted into default-on state)
+    if (_enforceState && newFlags == 0) {
+        Serial.println("[Sched] Enforce: no active entries, powering off");
+        uint8_t cmd[9];
+        buildPowerCmd(false, cmd);
+        ble.write(cmd, "all");
+        for (size_t s = 0; s < ble.getStripCount(); s++) {
+            BleStrip* st = ble.getStrip(s);
+            if (st) st->lastPower = false;
+        }
+        pattern.stop();
+    }
+    _enforceState = false;
 
     _activeFlags = newFlags;
 }
