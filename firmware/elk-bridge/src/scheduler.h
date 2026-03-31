@@ -36,7 +36,7 @@ public:
     void loadFromNVS();
 
     bool isTimeValid() const;
-    void forceCheck() { _activeFlags = 0; _lastCheck = 0; _enforceState = true; }
+    void forceCheck() { _activeFlags = 0; _lastCheck = 0; _enforceCount = 3; }
 
 private:
     Preferences*  _prefs = nullptr;
@@ -45,7 +45,7 @@ private:
     uint32_t      _lastCheck = 0;
     uint16_t      _activeFlags = 0;   // bitmask: which entries were active last tick
 
-    bool _enforceState = false;
+    uint8_t _enforceCount = 0;  // retries remaining for enforce-off
 
     bool isEntryActive(const ScheduleEntry& entry, struct tm& now) const;
     bool loadUserPreset(const char* name, PatternStep* steps, uint8_t& stepCount);

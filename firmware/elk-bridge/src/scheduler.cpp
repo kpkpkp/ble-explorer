@@ -109,9 +109,10 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
     if (_count == 0) return;
 
     // Enforce power-off on reconnect even before NTP syncs —
-    // strips boot into default-on state and need immediate correction
-    if (_enforceState && !isTimeValid()) {
-        Serial.println("[Sched] Enforce: NTP not synced, powering off as precaution");
+    // strips boot into default-on state and need immediate correction.
+    // Retries 3x at 2s intervals to overcome marginal RSSI.
+    if (_enforceCount > 0 && !isTimeValid()) {
+        Serial.printf("[Sched] Enforce: NTP not synced, powering off (%d left)\n", _enforceCount);
         uint8_t cmd[9];
         buildPowerCmd(false, cmd);
         ble.write(cmd, "all");
@@ -119,7 +120,7 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
             BleStrip* st = ble.getStrip(s);
             if (st) st->lastPower = false;
         }
-        _enforceState = false;
+        _enforceCount--;
         return;
     }
 
@@ -208,8 +209,8 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
 
     // After forceCheck: if nothing is active, enforce power off
     // (strips may have booted into default-on state)
-    if (_enforceState && newFlags == 0) {
-        Serial.println("[Sched] Enforce: no active entries, powering off");
+    if (_enforceCount > 0 && newFlags == 0) {
+        Serial.printf("[Sched] Enforce: no active entries, powering off (%d left)\n", _enforceCount);
         uint8_t cmd[9];
         buildPowerCmd(false, cmd);
         ble.write(cmd, "all");
@@ -218,8 +219,10 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
             if (st) st->lastPower = false;
         }
         pattern.stop();
+        _enforceCount--;
+    } else if (_enforceCount > 0 && newFlags != 0) {
+        _enforceCount = 0; // schedule is active, stop enforcing off
     }
-    _enforceState = false;
 
     _activeFlags = newFlags;
 }
