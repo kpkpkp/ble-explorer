@@ -12,7 +12,10 @@ static const char HTML_DASHBOARD[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;max-width:480px;margin:0 auto}
-h1{font-size:1.2em;color:#fff;margin-bottom:10px;text-align:center}
+h1{font-size:1.2em;color:#fff;margin:0}
+.hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.hdr a{color:#777;font-size:.78em;cursor:pointer;text-decoration:none}
+.hdr a:hover{color:#e94560}
 .c{background:#16213e;border-radius:8px;padding:10px;margin-bottom:10px}
 .c h2{font-size:.82em;color:#777;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
 .sr{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:.8em}
@@ -92,10 +95,15 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 .sce .tr select{padding:3px;background:#0a0e27;color:#e0e0e0;border:1px solid #333;border-radius:4px;font-size:.9em;max-width:110px}
 .sce .tr .sw-tog{padding:2px 6px;font-size:.8em;min-width:28px}
 .scs{font-size:.72em;color:#aaa;padding:2px 0}
+#abtM{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;align-items:center;justify-content:center}
+#abtM.open{display:flex}
+#abtP{background:#16213e;border-radius:8px;padding:20px;max-width:440px;width:90%;max-height:85vh;overflow-y:auto;position:relative}
+#abtX{position:absolute;top:10px;right:12px;background:none;border:none;color:#777;font-size:18px;cursor:pointer}
+#abtX:hover{color:#e94560}
 </style>
 </head>
 <body>
-<h1>ESP32 String Lights</h1>
+<div class="hdr"><h1>ESP32 String Lights</h1><a onclick="showAbt()">About</a></div>
 
 <div class="c">
 <div class="sr"><span><span class="d dof" id="wD"></span>WiFi: <span id="wS">--</span></span><span id="wIP"></span></div>
@@ -700,8 +708,32 @@ $('pwTog').title=active?'Managed by schedule':'';
 
 loadSched();
 
+// --- About modal ---
+function showAbt(){$('abVer').textContent='v'+(S.fw||'?');$('abtM').classList.add('open')}
+function closeAbt(){$('abtM').classList.remove('open')}
+
 poll();
 setInterval(poll,1000);
 </script>
+
+<div id="abtM" onclick="if(event.target===this)closeAbt()">
+<div id="abtP">
+<button id="abtX" onclick="closeAbt()">&times;</button>
+<h2 style="font-size:.82em;color:#777;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">ESP32 String Lights <span id="abVer" style="color:#e94560;text-transform:none;letter-spacing:0"></span></h2>
+<p style="font-size:.78em;color:#aaa;margin-bottom:10px">ESP32-C3 WiFi-to-BLE bridge for ELK-BLEDOM LED string lights. Connect from any browser on your local network — no app required.</p>
+<h2 style="font-size:.82em;color:#777;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Features</h2>
+<ul style="font-size:.78em;color:#aaa;padding-left:14px;margin-bottom:10px;line-height:1.7">
+<li>Schedule engine — time-based on/off and pattern playback</li>
+<li>Pattern presets — built-in and custom with fade/cut transitions</li>
+<li>Color calibration — hardware correction for accurate colors</li>
+<li>Live dashboard — real-time status with 1s polling</li>
+<li>OTA firmware updates — flash over WiFi</li>
+</ul>
+<h2 style="font-size:.82em;color:#777;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">How It Works</h2>
+<p style="font-size:.78em;color:#aaa;margin-bottom:12px">The ESP32-C3 joins your WiFi network and bridges HTTP commands into BLE 5.0 frames sent to up to 3 LED strips simultaneously. Patterns and schedules run autonomously on the bridge even when no browser is open.</p>
+<a href="https://github.com/kpkpkp/ble-explorer/issues/new" target="_blank" style="display:inline-block;background:#e94560;color:#fff;font-size:.78em;font-weight:600;padding:6px 14px;border-radius:6px;text-decoration:none">Report a Bug</a>
+</div>
+</div>
+
 </body>
 </html>)rawliteral";
