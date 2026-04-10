@@ -521,9 +521,10 @@ S.pStep=d.pattern.currentStep;
 S.pTot=d.pattern.totalSteps;
 
 // Auto-populate editor from running preset on page load
-if(S.play&&S.pn&&P[S.pn]&&!steps.length){
-steps=P[S.pn].map(function(h){return typeof h==='string'?{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
-renSt();
+if(S.play&&S.pn&&!steps.length){
+var src=UP[S.pn]||null;
+if(!src&&P[S.pn])src=P[S.pn].map(function(h){return typeof h==='string'?{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
+if(src){steps=src.map(function(s){return{hex:s.hex,br:s.br,dur:s.dur,tr:s.tr,fade:s.fade}});renSt()}
 }
 
 var st=rStrip();

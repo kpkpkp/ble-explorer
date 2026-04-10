@@ -154,7 +154,7 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
             Serial.printf("[Sched] Entry %d active: %s\n", i, e.pattern);
 
             if (strcmp(e.pattern, "*") == 0) {
-                // Power timer — turn on
+                // Power timer — turn on, then restore saved pattern if any
                 uint8_t cmd[9];
                 buildPowerCmd(true, cmd);
                 ble.write(cmd, "all");
@@ -162,6 +162,7 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
                     BleStrip* st = ble.getStrip(s);
                     if (st) st->lastPower = true;
                 }
+                pattern.loadFromNVS(ble);
             } else {
                 // Named pattern — power on first, then load and play
                 uint8_t cmd[9];
@@ -218,7 +219,8 @@ void Scheduler::tick(BleManager& ble, PatternEngine& pattern) {
             BleStrip* st = ble.getStrip(s);
             if (st) st->lastPower = false;
         }
-        pattern.stop();
+        // Don't call pattern.stop() — it clears NVS saved pattern.
+        // Pattern will be restored by loadFromNVS when schedule activates.
         _enforceCount--;
     } else if (_enforceCount > 0 && newFlags != 0) {
         _enforceCount = 0; // schedule is active, stop enforcing off
