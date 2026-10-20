@@ -53,6 +53,15 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 .sw div{aspect-ratio:1;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:border-color .12s}
 .sw div:hover{border-color:rgba(255,255,255,.5)}
 .sw div.sel{border-color:#e94560}
+.sw div{position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+.sw div.ed:after{content:'';position:absolute;right:2px;top:2px;width:6px;height:6px;border-radius:50%;background:#fff;border:1px solid #000}
+.swh{font-size:.7em;color:#555;margin-bottom:6px}
+#swB{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:49}
+#swE{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,320px);background:#16213e;border:1px solid #333;border-radius:8px;padding:12px;z-index:50}
+#swE .tt{display:flex;justify-content:space-between;align-items:center;font-size:.85em;margin-bottom:6px}
+#swE .lv{display:flex;gap:6px;align-items:center;margin:8px 0;color:#999}
+#swE .lv input{width:auto}
+#swE .br button{flex:1}
 .cp{height:36px;border-radius:6px;margin:6px 0;border:1px solid #333}
 .hx{display:flex;gap:6px;align-items:center;margin-top:4px}
 .hx input{flex:1;padding:6px;background:#0f3460;color:#e0e0e0;border:1px solid #333;border-radius:6px;font-size:.8em;font-family:monospace}
@@ -176,6 +185,7 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <div class="c">
 <h2>Color</h2>
 <div class="sw" id="sG"></div>
+<div class="swh">Long-press or right-click a tile to touch up its color</div>
 <div class="cp" id="cP"></div>
 <div class="hx"><span style="color:#777">#</span><input type="text" id="hI" maxlength="6" placeholder="FF00FF"><button class="bsm" onclick="aHex()">Set</button></div>
 <label>R <span class="v" id="rV">0</span></label>
@@ -196,6 +206,25 @@ select{width:100%;padding:7px;background:#0f3460;color:#e0e0e0;border:1px solid 
 <input type="range" id="spS" min="1" max="10" value="3">
 </div>
 
+
+<div id="swB" onclick="swX()"></div>
+<div id="swE">
+<div class="tt"><b>Touch up tile</b><span id="eO" style="color:#777"></span></div>
+<div class="cp" id="eP"></div>
+<div class="hx"><span style="color:#777">#</span><input type="text" id="eH" maxlength="6"></div>
+<label>R <span class="v" id="eRv">0</span></label>
+<input type="range" id="eR" min="0" max="255" value="0">
+<label>G <span class="v" id="eGv">0</span></label>
+<input type="range" id="eG" min="0" max="255" value="0">
+<label>B <span class="v" id="eBv">0</span></label>
+<input type="range" id="eB" min="0" max="255" value="0">
+<label class="lv"><input type="checkbox" id="eLv"> Live on lights (stops the running pattern)</label>
+<div class="br">
+<button class="bac" onclick="swSv()">Save</button>
+<button class="bsm" onclick="swRs()">Reset</button>
+<button class="bsm" onclick="swX()">Cancel</button>
+</div>
+</div>
 
 <script>
 var SW=['FF0000','FF7F00','FFFF00','7FFF00','00FF00','00FF7F','00FFFF','007FFF',
@@ -236,8 +265,43 @@ function h2r(h){return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parse
 function r2h(r,g,b){return[r,g,b].map(function(v){return v.toString(16).padStart(2,'0')}).join('').toUpperCase()}
 function fUp(s){var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+'h '+m+'m'}
 
-// Build swatch grid
-(function(){var g=$('sG');SW.forEach(function(c){var d=document.createElement('div');d.style.background='#'+c;d.dataset.c=c;d.onclick=function(){swC(c)};g.appendChild(d)})})();
+// Tile touch-ups: per-browser redefinitions {originalHex:newHex} (localStorage)
+var OV={};
+try{OV=JSON.parse(localStorage.getItem('elkSw')||'{}')||{}}catch(e){OV={}}
+function ov(h){return OV[h]||h}
+function svOV(){try{localStorage.setItem('elkSw',JSON.stringify(OV))}catch(e){}}
+
+// Build swatch grid (long-press / right-click a tile to edit it)
+var swLP=false;
+function buildSw(){var g=$('sG');g.innerHTML='';SW.forEach(function(o){
+var c=ov(o);var d=document.createElement('div');
+d.style.background='#'+c;d.dataset.o=o;d.dataset.c=c;
+if(c!==o)d.classList.add('ed');
+d.onclick=function(){if(swLP){swLP=false;return}swC(this.dataset.c)};
+d.oncontextmenu=function(e){e.preventDefault();swEd(o);return false};
+var tm=null;
+d.addEventListener('touchstart',function(){swLP=false;clearTimeout(tm);tm=setTimeout(function(){swLP=true;swEd(o)},500)},{passive:true});
+['touchend','touchmove','touchcancel'].forEach(function(ev){d.addEventListener(ev,function(){clearTimeout(tm)},{passive:true})});
+g.appendChild(d)})}
+buildSw();
+
+// Tile editor popover
+var swO=null,swCur=[0,0,0],swT=null;
+function swEd(o){swO=o;swCur=h2r(ov(o));$('eO').textContent='default #'+o;eSync(0);$('swB').style.display='block';$('swE').style.display='block'}
+function swX(){$('swB').style.display='none';$('swE').style.display='none';swO=null;clearTimeout(swT)}
+function eSync(live,skipHex){
+var h=r2h(swCur[0],swCur[1],swCur[2]);
+$('eP').style.background='#'+h;
+if(!skipHex)$('eH').value=h;
+['R','G','B'].forEach(function(k,i){$('e'+k).value=swCur[i];$('e'+k+'v').textContent=swCur[i]});
+if(live&&$('eLv').checked){clearTimeout(swT);swT=setTimeout(function(){post('/api/color',{r:swCur[0],g:swCur[1],b:swCur[2],target:S.tgt})},150)}
+}
+['R','G','B'].forEach(function(k,i){$('e'+k).addEventListener('input',function(){swCur[i]=+this.value;eSync(1)})});
+$('eH').addEventListener('input',function(){var v=this.value.replace('#','');if(/^[0-9a-fA-F]{6}$/.test(v)){swCur=h2r(v);eSync(1,1)}});
+$('eLv').addEventListener('change',function(){eSync(1)});
+function swSv(){if(!swO)return;var h=r2h(swCur[0],swCur[1],swCur[2]);if(h===swO)delete OV[swO];else OV[swO]=h;svOV();buildSw();uPrev();swX()}
+function swRs(){if(!swO)return;delete OV[swO];svOV();buildSw();uPrev();swX()}
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&swO)swX()});
 
 // Build effect dropdown
 (function(){var s=$('fxS');FX.forEach(function(e){var o=document.createElement('option');o.value=e[1];o.textContent=e[0];s.appendChild(o)})})();
@@ -304,7 +368,7 @@ S._dPr=1;
 var n=this.value;
 updDelBtn();
 var src=UP[n]||null;
-if(!src&&P[n])src=P[n].map(function(h){return typeof h==='string'?{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
+if(!src&&P[n])src=P[n].map(function(h){return typeof h==='string'?{hex:ov(h),br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
 if(src){steps=src.map(function(s){return{hex:s.hex,br:s.br,dur:s.dur,tr:s.tr,fade:s.fade}});renSt();if(S.play)playP()}
 });
 $('fxS').addEventListener('focus',function(){S._dFx=1});
@@ -523,7 +587,7 @@ S.pTot=d.pattern.totalSteps;
 // Auto-populate editor from running preset on page load
 if(S.play&&S.pn&&!steps.length){
 var src=UP[S.pn]||null;
-if(!src&&P[S.pn])src=P[S.pn].map(function(h){return typeof h==='string'?{hex:h,br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
+if(!src&&P[S.pn])src=P[S.pn].map(function(h){return typeof h==='string'?{hex:ov(h),br:S.br,dur:2.0,tr:'cut',fade:0.5}:{hex:h.hex,br:h.br,dur:h.dur,tr:h.tr,fade:h.fade}});
 if(src){steps=src.map(function(s){return{hex:s.hex,br:s.br,dur:s.dur,tr:s.tr,fade:s.fade}});renSt()}
 }
 
