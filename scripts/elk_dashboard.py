@@ -99,7 +99,7 @@ BUILTIN_PRESETS = {
     "Halloween": {
         "steps": [
             {"color": "#FF9A00", "brightness": 100, "duration": 2.0, "transition": "cut", "fade_time": 0.5},
-            {"color": "#F75F1C", "brightness": 100, "duration": 2.0, "transition": "cut", "fade_time": 0.5},
+            {"color": "#CC2200", "brightness": 100, "duration": 2.0, "transition": "cut", "fade_time": 0.5},
             {"color": "#000000", "brightness": 100, "duration": 2.0, "transition": "cut", "fade_time": 0.5},
             {"color": "#881EE4", "brightness": 100, "duration": 2.0, "transition": "cut", "fade_time": 0.5},
             {"color": "#85E21F", "brightness": 100, "duration": 2.0, "transition": "cut", "fade_time": 0.5},

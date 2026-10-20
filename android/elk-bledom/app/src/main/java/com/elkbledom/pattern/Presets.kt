@@ -49,7 +49,7 @@ val BUILTIN_PRESETS = linkedMapOf(
     ),
     "Halloween" to listOf(
         PatternStep("#FF9A00", 100, 2.0f, "cut", 0.5f),
-        PatternStep("#F75F1C", 100, 2.0f, "cut", 0.5f),
+        PatternStep("#CC2200", 100, 2.0f, "cut", 0.5f),
         PatternStep("#000000", 100, 2.0f, "cut", 0.5f),
         PatternStep("#881EE4", 100, 2.0f, "cut", 0.5f),
         PatternStep("#85E21F", 100, 2.0f, "cut", 0.5f),

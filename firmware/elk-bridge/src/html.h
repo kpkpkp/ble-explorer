@@ -218,7 +218,7 @@ var P={
 "4th of July":['C41F40','FFFFFF','1E2D60'],
 "Pioneer Day":['071D49','FFFFFF','AA0200','FFB81D','8B5E3C','F5E6C8'],
 "Christmas":['C30F16','165B33','F8B229','FFFFFF'],
-"Halloween":['FF9A00','F75F1C','000000','881EE4','85E21F'],
+"Halloween":['FF9A00','CC2200','000000','881EE4','85E21F'],
 "Mardi Gras":['880085','FFD700','00A651'],
 "Pride Rainbow":['E40303','FF8C00','FFED00','008026','004DFF','750787'],
 "Oscar Statue":[{hex:'D5BA6D',br:100,dur:5.0,tr:'fade',fade:1.0},{hex:'B69F66',br:100,dur:5.0,tr:'fade',fade:1.0},{hex:'EBAB47',br:100,dur:5.0,tr:'fade',fade:1.0}]};
