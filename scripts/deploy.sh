@@ -146,7 +146,20 @@ for p in presets:
                 python3 -c "
 import sys, json, urllib.request
 entries = json.load(open('$BACKUP_DIR/schedule.json')).get('data', {}).get('entries', [])
+# The schedule normally survives the reboot in NVS; POST appends, so only
+# re-post entries the bridge no longer has (avoids duplicates).
+KEYS = ('enabled', 'days', 'startHour', 'startMin', 'endHour', 'endMin', 'pattern')
+sig = lambda x: tuple(x.get(k) for k in KEYS)
+try:
+    cur = json.load(urllib.request.urlopen('http://$BRIDGE_HOST/api/schedule', timeout=5)).get('data', {}).get('entries', [])
+except Exception:
+    cur = []
+have = [sig(c) for c in cur]
 for e in entries:
+    if sig(e) in have:
+        have.remove(sig(e))
+        print(f'  Already present: {e.get(\"pattern\",\"?\")} {e.get(\"startHour\",0):02d}:{e.get(\"startMin\",0):02d}-{e.get(\"endHour\",0):02d}:{e.get(\"endMin\",0):02d}')
+        continue
     body = json.dumps(e).encode()
     req = urllib.request.Request('http://$BRIDGE_HOST/api/schedule',
         data=body, headers={'Content-Type': 'application/json'})
